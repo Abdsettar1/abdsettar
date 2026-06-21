@@ -1,0 +1,6 @@
+{
+  "name": "NexVend Command Center",
+  "description": "The next-generation command room for your retail empire. Brief the squad, manage missions, source products, and launch conversions in real time.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
