@@ -45,7 +45,7 @@ export function HowItWorksSection() {
         {/* Section Heading */}
         <div className="text-center mb-16">
           <FadeIn delay={0} y={40}>
-            <h2 className="hero-heading font-black uppercase leading-none tracking-tight text-center" style={{ fontSize: "clamp(3rem, 10vw, 110px)" }}>
+            <h2 className="hero-heading font-black uppercase leading-none tracking-tight text-center" style={{ fontSize: "clamp(2.5rem, 7vw, 75px)" }}>
               How It Works.
             </h2>
           </FadeIn>
@@ -64,14 +64,14 @@ export function HowItWorksSection() {
                   className="flex-grow flex flex-col p-8 sm:p-10 bg-white/[0.02] border border-white/[0.08] rounded-[30px] hover:border-[#B600A8]/40 hover:bg-white/[0.03] transition-all duration-300 group cursor-default"
                 >
                   {/* Step Large Number */}
-                  <div className="hero-heading font-black leading-none mb-4 tracking-tighter" style={{ fontSize: "clamp(4.5rem, 8vw, 100px)" }}>
+                  <div className="hero-heading font-black leading-none mb-4 tracking-tighter" style={{ fontSize: "clamp(3.5rem, 5.5vw, 70px)" }}>
                     {step.number}
                   </div>
 
                   {/* Step Title */}
                   <h3 
                     className="font-black uppercase text-[#D7E2EA] mb-4 tracking-wide group-hover:text-white transition-colors"
-                    style={{ fontSize: "clamp(1.1rem, 2.5vw, 1.5rem)" }}
+                    style={{ fontSize: "clamp(1rem, 1.5vw, 1.1rem)" }}
                   >
                     {step.title}
                   </h3>
@@ -79,7 +79,7 @@ export function HowItWorksSection() {
                   {/* Step Description */}
                   <p 
                     className="font-light text-[#D7E2EA]/60 leading-relaxed max-w-sm"
-                    style={{ fontSize: "clamp(0.85rem, 1.5vw, 1.05rem)" }}
+                    style={{ fontSize: "clamp(0.75rem, 1.1vw, 0.8rem)" }}
                   >
                     {step.description}
                   </p>

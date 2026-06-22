@@ -127,7 +127,7 @@ export function ChatSection({ onInitiateConsole }: ChatSectionProps) {
         
         {/* Section Heading */}
         <FadeIn delay={0} y={40} className="text-center mb-4">
-          <h2 className="hero-heading font-black uppercase tracking-tight leading-none text-center" style={{ fontSize: "clamp(3rem, 10vw, 120px)" }}>
+          <h2 className="hero-heading font-black uppercase tracking-tight leading-none text-center" style={{ fontSize: "clamp(2.5rem, 7vw, 84px)" }}>
             Command Jack.
           </h2>
         </FadeIn>

@@ -23,7 +23,7 @@ export function CTASection({ onContactClick }: CTASectionProps) {
 
         {/* Section Heading */}
         <FadeIn delay={0.15} y={30}>
-          <h2 className="hero-heading font-black uppercase tracking-tight leading-tight" style={{ fontSize: "clamp(2.5rem, 8vw, 90px)" }}>
+          <h2 className="hero-heading font-black uppercase tracking-tight leading-tight" style={{ fontSize: "clamp(2rem, 5.6vw, 63px)" }}>
             Let's build your empire.
           </h2>
         </FadeIn>
@@ -48,7 +48,7 @@ export function CTASection({ onContactClick }: CTASectionProps) {
             
             {/* Stat 1 */}
             <div className="flex flex-col items-center flex-1">
-              <span className="font-black text-[#D7E2EA] tracking-tight leading-none" style={{ fontSize: "clamp(1.2rem, 2.5vw, 2rem)" }}>
+              <span className="font-black text-[#D7E2EA] tracking-tight leading-none" style={{ fontSize: "clamp(1rem, 1.7vw, 1.4rem)" }}>
                 50+
               </span>
               <span className="mt-2 font-light text-[#D7E2EA]/40 uppercase tracking-[0.2em] text-[10px] sm:text-xs">
@@ -61,7 +61,7 @@ export function CTASection({ onContactClick }: CTASectionProps) {
 
             {/* Stat 2 */}
             <div className="flex flex-col items-center flex-1">
-              <span className="font-black text-[#D7E2EA] tracking-tight leading-none" style={{ fontSize: "clamp(1.2rem, 2.5vw, 2rem)" }}>
+              <span className="font-black text-[#D7E2EA] tracking-tight leading-none" style={{ fontSize: "clamp(1rem, 1.7vw, 1.4rem)" }}>
                 24/7
               </span>
               <span className="mt-2 font-light text-[#D7E2EA]/40 uppercase tracking-[0.2em] text-[10px] sm:text-xs">
@@ -74,7 +74,7 @@ export function CTASection({ onContactClick }: CTASectionProps) {
 
             {/* Stat 3 */}
             <div className="flex flex-col items-center flex-1">
-              <span className="font-black text-[#D7E2EA] tracking-tight leading-none" style={{ fontSize: "clamp(1.2rem, 2.5vw, 2rem)" }}>
+              <span className="font-black text-[#D7E2EA] tracking-tight leading-none" style={{ fontSize: "clamp(1rem, 1.7vw, 1.4rem)" }}>
                 72h
               </span>
               <span className="mt-2 font-light text-[#D7E2EA]/40 uppercase tracking-[0.2em] text-[10px] sm:text-xs">

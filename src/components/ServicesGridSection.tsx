@@ -68,7 +68,7 @@ export function ServicesGridSection() {
         {/* Main Heading */}
         <div className="text-center mb-4">
           <FadeIn delay={0} y={30}>
-            <h2 className="text-[#0C0C0C] font-black uppercase leading-none tracking-tight text-center" style={{ fontSize: "clamp(3rem, 10vw, 110px)" }}>
+            <h2 className="text-[#0C0C0C] font-black uppercase leading-none tracking-tight text-center" style={{ fontSize: "clamp(2.5rem, 7vw, 75px)" }}>
               Pick Your Weapon.
             </h2>
           </FadeIn>
@@ -106,7 +106,7 @@ export function ServicesGridSection() {
                     {/* Card Title */}
                     <h3 
                       className="font-black uppercase text-[#0C0C0C] mb-3 group-hover:text-[#B600A8] transition-colors duration-300"
-                      style={{ fontSize: "clamp(1.1rem, 2vw, 1.4rem)" }}
+                      style={{ fontSize: "clamp(0.9rem, 1.5vw, 1rem)" }}
                     >
                       {card.title}
                     </h3>
@@ -114,7 +114,7 @@ export function ServicesGridSection() {
                     {/* Description */}
                     <p 
                       className="font-light text-[#0C0C0C]/60 leading-relaxed"
-                      style={{ fontSize: "clamp(0.85rem, 1.4vw, 1rem)" }}
+                      style={{ fontSize: "clamp(0.7rem, 1.1vw, 0.75rem)" }}
                     >
                       {card.description}
                     </p>

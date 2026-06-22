@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { ContactButton } from "./Reusable";
 import { Cpu } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 function FloatingBoxes() {
   const boxes = Array.from({ length: 18 }, (_, i) => ({
@@ -61,6 +62,8 @@ interface HeroSectionProps {
 }
 
 export function HeroSection({ onContactClick }: HeroSectionProps) {
+  const navigate = useNavigate();
+
   const handleScroll = (id: string) => {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth" });
@@ -98,7 +101,7 @@ export function HeroSection({ onContactClick }: HeroSectionProps) {
         {/* Brand */}
         <div
           className="flex items-center gap-3 group cursor-pointer"
-          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          onClick={() => navigate("/")}
         >
           <div className="relative w-8 h-8 rounded-lg bg-gradient-to-tr from-[#18011F] to-[#B600A8] flex items-center justify-center border border-white/10 shadow-[0_0_15px_rgba(182,0,168,0.2)]">
             <Cpu className="w-4 h-4 text-white" />
@@ -111,7 +114,7 @@ export function HeroSection({ onContactClick }: HeroSectionProps) {
         {/* Nav Links */}
         <div className="flex items-center gap-4 sm:gap-8">
           {[
-            { label: "Home", action: () => window.scrollTo({ top: 0, behavior: "smooth" }) },
+            { label: "Home", action: () => navigate("/") },
             { label: "Services", action: () => handleScroll("services") },
             { label: "Squad", action: () => handleScroll("squad") },
             { label: "Contact", action: onContactClick },
@@ -132,23 +135,25 @@ export function HeroSection({ onContactClick }: HeroSectionProps) {
         className="flex-grow flex flex-col justify-center items-center px-4 w-full text-center"
         style={{ position: "relative", zIndex: 2 }}
       >
-        <div className="overflow-hidden mb-1 sm:mb-2">
+        <div className="overflow-hidden mb-1 sm:mb-2 flex justify-center w-full">
           <motion.h1
             initial={{ opacity: 0, y: 70 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15, duration: 1, ease: [0.25, 0.1, 0.25, 1] }}
-            className="hero-heading font-black uppercase tracking-tighter leading-none text-[13vw] sm:text-[14vw] md:text-[15.5vw] lg:text-[16vw] text-center"
+            className="hero-heading font-black uppercase tracking-tighter leading-none text-center"
+            style={{ fontSize: "clamp(2rem, 7.5vw, 5.5rem)" }}
           >
             your orders.
           </motion.h1>
         </div>
 
-        <div className="overflow-hidden mb-6 sm:mb-8">
+        <div className="overflow-hidden mb-6 sm:mb-8 flex justify-center w-full">
           <motion.h1
             initial={{ opacity: 0, y: 70 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.25, duration: 1, ease: [0.25, 0.1, 0.25, 1] }}
-            className="hero-heading font-black uppercase tracking-tighter leading-none text-[13vw] sm:text-[14vw] md:text-[15.5vw] lg:text-[16vw] text-center"
+            className="hero-heading font-black uppercase tracking-tighter leading-none text-center"
+            style={{ fontSize: "clamp(2rem, 7.5vw, 5.5rem)" }}
           >
             our mission.
           </motion.h1>
@@ -159,7 +164,7 @@ export function HeroSection({ onContactClick }: HeroSectionProps) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35, duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
           className="text-[#D7E2EA] font-light uppercase tracking-[0.3em] text-center max-w-xl mx-auto px-4"
-          style={{ fontSize: "clamp(0.75rem, 1.4vw, 1.25rem)" }}
+          style={{ fontSize: "clamp(0.7rem, 1.1vw, 1.1rem)" }}
         >
           Drop your goal. Jack and the squad take it from there.
         </motion.p>
@@ -175,7 +180,7 @@ export function HeroSection({ onContactClick }: HeroSectionProps) {
       >
         <div
           className="text-[#D7E2EA] font-light uppercase tracking-wider leading-snug max-w-[280px]"
-          style={{ fontSize: "clamp(0.7rem, 1.2vw, 1rem)" }}
+          style={{ fontSize: "clamp(0.65rem, 0.95vw, 0.85rem)" }}
         >
           every task routed. <br />
           every agent briefed. <br />

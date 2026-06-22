@@ -70,6 +70,85 @@ export function JacksWarRoom() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  const BACKEND_URL = (((import.meta as any).env?.VITE_BACKEND_URL) || "").replace(/\/$/, "");
+  const sessionId = useRef(`session-${Date.now()}-${Math.random()}`);
+
+  const sendToJack = async (messageText: string, isInitial = false) => {
+    setIsTyping(true);
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: messageText,
+          sessionId: sessionId.current
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        const { response: jackResponse } = data;
+        
+        // Add Jack's message
+        const jackMsg: ChatMessage = {
+          id: `jack-${Date.now()}`,
+          role: 'jack',
+          type: jackResponse.assignedAgents && jackResponse.assignedAgents.length > 0 ? 'assignment' : 'text',
+          content: jackResponse.message,
+          agents: jackResponse.assignedAgents ? jackResponse.assignedAgents.map((a: string) => {
+            const parts = a.split(' — ');
+            const name = parts[0] || a;
+            const role = parts[1] || 'Agent';
+            let emoji = '⚡';
+            if (name.includes('Sofia')) emoji = '🛍️';
+            else if (name.includes('Marcus')) emoji = '⚙️';
+            else if (name.includes('Amir')) emoji = '📈';
+            else if (name.includes('Yuna')) emoji = '💬';
+            else if (name.includes('Leo')) emoji = '🔍';
+            return { name, role, emoji };
+          }) : [],
+          timestamp: getTimestamp()
+        };
+
+        setMessages(prev => [...prev, jackMsg]);
+
+        // If store building intent detected, trigger split screen
+        if (jackResponse.detectedIntent === 'store' && jackResponse.nextAction === 'collecting-info') {
+          setChatMode('collecting-info');
+          setBuildStep(1);
+          
+          setTimeout(() => {
+            const guided1: ChatMessage = {
+              id: `jack-guided-1-${Date.now()}`,
+              role: 'jack',
+              type: 'text',
+              content: "Perfect. Let's build your store. First — what's your store name?",
+              timestamp: getTimestamp()
+            };
+            setMessages(prev => [...prev, guided1]);
+          }, 800);
+        }
+      } else {
+        throw new Error(data.error || "Failed payload");
+      }
+    } catch (error) {
+      console.error("Jack connection failed:", error);
+      const fallbackMsg: ChatMessage = {
+        id: `jack-fallback-${Date.now()}`,
+        role: 'jack',
+        type: 'text',
+        content: isInitial 
+          ? "Operational console initialized. All channels at standby. Tell me a bit about your business goals."
+          : 'Squad is currently being briefed. Give me a moment.',
+        timestamp: getTimestamp()
+      };
+      setMessages(prev => [...prev, fallbackMsg]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
   // States
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -229,58 +308,8 @@ export function JacksWarRoom() {
     };
     setMessages([userMsg]);
 
-    // 3. Initiate first reply after 1500ms
-    setIsTyping(true);
-    const t1 = setTimeout(() => {
-      setIsTyping(false);
-      const reply1: ChatMessage = {
-        id: `jack-reply-1-${Date.now()}`,
-        role: "jack",
-        type: "text",
-        content: "Got it. Breaking down your request now and briefing the squad.",
-        timestamp: getTimestamp()
-      };
-      setMessages(prev => [...prev, reply1]);
-
-      // 4. Initiate second assignment message after 1800ms
-      setIsTyping(true);
-      const t2 = setTimeout(() => {
-        setIsTyping(false);
-        const assignmentMsg: ChatMessage = {
-          id: `jack-assignment-${Date.now()}`,
-          role: "jack",
-          type: "assignment",
-          content: "I'm assigning the right people to your mission:",
-          agents: [
-            { name: "Sofia Reyes", role: "Store Design", emoji: "🛍️" },
-            { name: "Yuna Park", role: "WhatsApp Support", emoji: "💬" },
-            { name: "Leo Dumont", role: "Product Research", emoji: "📦" }
-          ],
-          timestamp: getTimestamp()
-        };
-        setMessages(prev => [...prev, assignmentMsg]);
-
-        // 5. Initiate final message of greeting after 1600ms
-        setIsTyping(true);
-        const t3 = setTimeout(() => {
-          setIsTyping(false);
-          const reply2: ChatMessage = {
-            id: `jack-reply-2-${Date.now()}`,
-            role: "jack",
-            type: "text",
-            content: "Your store will be live within 72 hours. Yuna will be online on your WhatsApp from day one. I'll keep you updated here.",
-            timestamp: getTimestamp()
-          };
-          setMessages(prev => [...prev, reply2]);
-        }, 1600);
-
-        return () => clearTimeout(t3);
-      }, 1800);
-
-      return () => clearTimeout(t2);
-    }, 1500);
-
-    return () => clearTimeout(t1);
+    // 3. Command Jack on backend
+    sendToJack(initialPrompt, true);
   }, []);
 
   // Scroll to bottom helper
@@ -304,89 +333,115 @@ export function JacksWarRoom() {
     setMessages(prev => [...prev, userMsg]);
     setInputValue("");
 
-    // 1. Detect if we should enter store builder mode
-    if (chatMode === "normal" && detectStoreIntent(userText)) {
-      setChatMode("collecting-info");
-      setBuildStep(1);
-      
-      setIsTyping(true);
-      const typedDelay = setTimeout(() => {
-        setIsTyping(false);
-        const jackMsg: ChatMessage = {
-          id: `jack-collecting-1-${Date.now()}`,
-          role: "jack",
-          type: "text",
-          content: "Perfect. Let's build your store. First — what's your store name?",
-          timestamp: getTimestamp()
-        };
-        setMessages(prev => [...prev, jackMsg]);
-      }, 1500);
+    if (chatMode === "normal") {
+      sendToJack(userText);
       return;
     }
 
-    // 2. Handlers for info collection
     if (chatMode === "collecting-info") {
       setIsTyping(true);
-      const typedDelay = setTimeout(() => {
+      setTimeout(async () => {
         setIsTyping(false);
-        
+        const currentStep = buildStep;
         let replyContent = "";
-        let currentStep = buildStep;
 
         if (currentStep === 1) {
           setStoreInfo(prev => ({ ...prev, name: userText }));
           setBuildStep(2);
           replyContent = "Great name. What niche or products will you sell? (e.g. fashion, electronics, supplements)";
+          
+          const jackMsg: ChatMessage = {
+            id: `jack-guided-2-${Date.now()}`,
+            role: "jack",
+            type: "text",
+            content: replyContent,
+            timestamp: getTimestamp()
+          };
+          setMessages(prev => [...prev, jackMsg]);
         } else if (currentStep === 2) {
           setStoreInfo(prev => ({ ...prev, niche: userText }));
           setBuildStep(3);
           replyContent = "Got it. What's your preferred color theme? (e.g. dark luxury, clean white, bold orange)";
+          
+          const jackMsg: ChatMessage = {
+            id: `jack-guided-3-${Date.now()}`,
+            role: "jack",
+            type: "text",
+            content: replyContent,
+            timestamp: getTimestamp()
+          };
+          setMessages(prev => [...prev, jackMsg]);
         } else if (currentStep === 3) {
           setStoreInfo(prev => ({ ...prev, colorTheme: userText }));
           setBuildStep(4);
           replyContent = "Last one — what language should the store be in?";
-        } else if (currentStep === 4) {
-          setStoreInfo(prev => ({ ...prev, language: userText }));
-          replyContent = "All set. Sofia is designing your store now. Watch it come to life →";
           
-          // Trigger build start layout animation after small delay (300ms)
+          const jackMsg: ChatMessage = {
+            id: `jack-guided-4-${Date.now()}`,
+            role: "jack",
+            type: "text",
+            content: replyContent,
+            timestamp: getTimestamp()
+          };
+          setMessages(prev => [...prev, jackMsg]);
+        } else if (currentStep === 4) {
+          const finalInfo = { ...storeInfo, language: userText };
+          setStoreInfo(prev => ({ ...prev, language: userText }));
+          replyContent = `All set. Sofia is designing your store now with a custom theme matching '${finalInfo.colorTheme}'. Watch it come to life →`;
+          
+          const jackMsg: ChatMessage = {
+            id: `jack-guided-5-${Date.now()}`,
+            role: "jack",
+            type: "text",
+            content: replyContent,
+            timestamp: getTimestamp()
+          };
+          setMessages(prev => [...prev, jackMsg]);
+
           setTimeout(() => {
             setShowPreview(true);
             setChatMode("building");
           }, 300);
-        }
 
-        const jackMsg: ChatMessage = {
-          id: `jack-collecting-step-${currentStep}-${Date.now()}`,
-          role: "jack",
-          type: "text",
-          content: replyContent,
-          timestamp: getTimestamp()
-        };
-        setMessages(prev => [...prev, jackMsg]);
-      }, 1500);
+          try {
+            const resp = await fetch(`${BACKEND_URL}/api/analyze`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                storeName: finalInfo.name,
+                niche: finalInfo.niche,
+                colorTheme: finalInfo.colorTheme,
+                language: finalInfo.language
+              })
+            });
+            const data = await resp.json();
+            if (data.success && data.brief) {
+              const { brief } = data;
+              setTimeout(() => {
+                const briefMsg: ChatMessage = {
+                  id: `jack-brief-${Date.now()}`,
+                  role: "jack",
+                  type: "assignment",
+                  content: `Squad brief completed for ${finalInfo.name}: "${brief.storeBrief || ''}"`,
+                  agents: (brief.assignedTeam || []).map((t: any) => {
+                    let emoji = '⚡';
+                    if (t.agent.includes('Sofia')) emoji = '🛍️';
+                    else if (t.agent.includes('Marcus')) emoji = '⚙️';
+                    else if (t.agent.includes('Leo')) emoji = '🔍';
+                    return { name: t.agent, role: t.task, emoji };
+                  }),
+                  timestamp: getTimestamp()
+                };
+                setMessages(prev => [...prev, briefMsg]);
+              }, 4000);
+            }
+          } catch (e) {
+            console.error("API Analyze failure:", e);
+          }
+        }
+      }, 1000);
       return;
     }
-
-    // 3. Default response loop
-    setIsTyping(true);
-    const typedDelay = setTimeout(() => {
-      setIsTyping(false);
-
-      // Rotate through subsequent responses
-      const responseText = rotatingReplies[rotatingIndex];
-      setRotatingIndex(prev => (prev + 1) % rotatingReplies.length);
-
-      const jackMsg: ChatMessage = {
-        id: `jack-reply-loop-${Date.now()}`,
-        role: "jack",
-        type: "text",
-        content: responseText,
-        timestamp: getTimestamp()
-      };
-
-      setMessages(prev => [...prev, jackMsg]);
-    }, 1500);
   };
 
   const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -422,7 +477,7 @@ export function JacksWarRoom() {
       y: 0,
       transition: {
         duration: 0.5,
-        ease: [0.25, 0.1, 0.25, 1]
+        ease: [0.25, 0.1, 0.25, 1] as any
       }
     }
   };
