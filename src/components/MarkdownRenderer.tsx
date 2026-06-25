@@ -8,7 +8,7 @@ export function MarkdownRenderer({ content }: { content: string }) {
   const parts = content.split(/(```[\s\S]*?```)/g);
 
   return (
-    <div className="space-y-2.5 text-sm sm:text-[14px] leading-relaxed font-sans text-[#D7E2EA]/90 select-text">
+    <div className="space-y-2.5 text-sm sm:text-[14px] leading-relaxed font-sans text-neutral-900 select-text">
       {parts.map((part, index) => {
         if (part.startsWith("```") && part.endsWith("```")) {
           // Code block parsing
@@ -29,7 +29,7 @@ export function MarkdownRenderer({ content }: { content: string }) {
                 if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
                   const items = trimmed.split(/\n[*-]\s+/);
                   return (
-                    <ul key={pIdx} className="list-disc pl-5 my-2.5 space-y-1.5 text-[#D7E2EA]/85">
+                    <ul key={pIdx} className="list-disc pl-5 my-2.5 space-y-1.5 text-neutral-850">
                       {items.map((item, itemIdx) => {
                         const cleanItem = item.replace(/^[*-]\s+/, "");
                         return <li key={itemIdx}>{parseInlineMarkdown(cleanItem)}</li>;
@@ -41,14 +41,14 @@ export function MarkdownRenderer({ content }: { content: string }) {
                 // Handle headers
                 if (trimmed.startsWith("### ")) {
                   return (
-                    <h4 key={pIdx} className="text-sm font-semibold text-white tracking-wide uppercase mt-4 mb-2">
+                    <h4 key={pIdx} className="text-sm font-extrabold text-black tracking-wide uppercase mt-4 mb-2">
                       {parseInlineMarkdown(trimmed.replace(/^###\s+/, ""))}
                     </h4>
                   );
                 }
                 if (trimmed.startsWith("## ")) {
                   return (
-                    <h3 key={pIdx} className="text-base font-bold text-white tracking-tight mt-4 mb-2">
+                    <h3 key={pIdx} className="text-base font-black text-black tracking-tight mt-4 mb-2">
                       {parseInlineMarkdown(trimmed.replace(/^##\s+/, ""))}
                     </h3>
                   );
@@ -119,7 +119,7 @@ function parseInlineMarkdown(text: string) {
   return parts.map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
-        <strong key={i} className="font-semibold text-white">
+        <strong key={i} className="font-extrabold text-black">
           {part.slice(2, -2)}
         </strong>
       );
@@ -127,7 +127,7 @@ function parseInlineMarkdown(text: string) {
       return (
         <code
           key={i}
-          className="px-1.5 py-0.5 mx-0.5 rounded bg-white/[0.06] border border-white/10 text-pink-400 font-mono text-xs select-text"
+          className="px-1.5 py-0.5 mx-0.5 rounded bg-black/[0.04] border border-black/10 text-pink-700 font-mono text-xs select-text"
         >
           {part.slice(1, -1)}
         </code>
