@@ -56,6 +56,13 @@ export default function HeroSection() {
               </button>
             ))}
             
+            <button
+              onClick={() => navigate("/genrite")}
+              className="text-[#B600A8] font-semibold uppercase tracking-wider text-xs sm:text-sm lg:text-base cursor-pointer hover:opacity-85 transition-opacity"
+            >
+              Genrite ✦
+            </button>
+            
             {/* Glowing Command Center link */}
             <button
               onClick={() => navigate("/command")}

@@ -8,6 +8,7 @@ import { LandingPage } from "./components/LandingPage";
 import { CommandCenter } from "./components/CommandCenter";
 import { JacksWarRoom } from "./components/JacksWarRoom";
 import { LoginPage } from "./components/LoginPage";
+import { GenritePage } from "./components/GenritePage";
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/command" element={<CommandCenter />} />
         <Route path="/chat" element={<JacksWarRoom />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/genrite" element={<GenritePage />} />
         {/* Fallback to landing */}
         <Route path="*" element={<LandingPage />} />
       </Routes>

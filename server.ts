@@ -2,6 +2,9 @@ import express from "express";
 import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import { createServer as createViteServer } from "vite";
+import chatRoutes from "./routes/chat.js";
+import chatwootRoutes from "./routes/chatwoot.js";
+import woocommerceRoutes from "./routes/woocommerce.js";
 
 async function startServer() {
   const app = express();
@@ -27,6 +30,76 @@ async function startServer() {
       }
     }
   });
+
+  // Robust helper to execute Gemini API calls with retries and fallbacks
+  async function generateContentWithRetry(aiClient: any, params: {
+    contents: any;
+    config?: any;
+    model?: string;
+  }, maxRetries = 3) {
+    const model = params.model || 'gemini-3.5-flash';
+    
+    // Check if the model is image/video/audio specific
+    const isSpecializedModality = 
+      model.includes('image') || 
+      model.includes('imagen') || 
+      model.includes('video') || 
+      model.includes('veo') || 
+      model.includes('audio') || 
+      model.includes('tts') || 
+      model.includes('lyria');
+
+    // Ordered models to try: primary model -> lighter backup -> fallback
+    const modelsToTry = isSpecializedModality 
+      ? [model] 
+      : [model, 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+
+    let lastError: any = null;
+
+    for (const modelName of modelsToTry) {
+      let attempt = 0;
+      while (attempt < maxRetries) {
+        try {
+          console.log(`Calling model ${modelName} (attempt ${attempt + 1}/${maxRetries})...`);
+          const result = await aiClient.models.generateContent({
+            ...params,
+            model: modelName,
+          });
+          return result;
+        } catch (error: any) {
+          lastError = error;
+          console.warn(`Attempt ${attempt + 1} failed for model ${modelName}:`, error.message || error);
+          
+          const isTransient = 
+            error.status === 503 || 
+            error.status === 429 || 
+            (error.message && (
+              error.message.includes('503') || 
+              error.message.includes('429') || 
+              error.message.includes('busy') || 
+              error.message.includes('overload') || 
+              error.message.includes('UNAVAILABLE') || 
+              error.message.includes('high demand')
+            ));
+
+          if (!isTransient) {
+            // Structural errors (e.g. invalid parameters) should fail fast or fallback if possible
+            break;
+          }
+
+          attempt++;
+          if (attempt < maxRetries) {
+            const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500;
+            console.log(`Waiting ${Math.round(delay)}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+      }
+      console.warn(`Model ${modelName} failed all attempts or was unavailable. Trying fallback if available...`);
+    }
+
+    throw lastError || new Error("Failed to generate content after trying multiple models");
+  }
 
   // Conversation history per session
   const sessions = new Map<string, { role: "user" | "model"; text: string }[]>();
@@ -96,7 +169,7 @@ Response format (always return valid JSON):
       ];
 
       // Call Gemini API using modern SDK patterns
-      const result = await ai.models.generateContent({
+      const result = await generateContentWithRetry(ai, {
         model: 'gemini-3.5-flash',
         contents: contents,
         config: {
@@ -173,7 +246,7 @@ Response format (always return valid JSON):
       Return only valid JSON, do not wrap in markdown blocks.
       `;
 
-      const result = await ai.models.generateContent({
+      const result = await generateContentWithRetry(ai, {
         model: 'gemini-3.5-flash',
         contents: prompt,
         config: {
@@ -219,7 +292,7 @@ Response format (always return valid JSON):
       Return only the response text, no JSON needed.
       `;
 
-      const result = await ai.models.generateContent({
+      const result = await generateContentWithRetry(ai, {
         model: 'gemini-3.5-flash',
         contents: yunaPrompt,
       });
@@ -280,7 +353,7 @@ Response format (always return valid JSON):
       Return only valid JSON.
       `;
 
-      const result = await ai.models.generateContent({
+      const result = await generateContentWithRetry(ai, {
         model: 'gemini-3.5-flash',
         contents: leoPrompt,
         config: {
@@ -299,6 +372,220 @@ Response format (always return valid JSON):
       res.status(500).json({ error: 'Product research failed' });
     }
   });
+
+  // ==========================================
+  // GENRITE AI CREATIVE STUDIO ENDPOINTS
+  // ==========================================
+
+  // 1. Generate Image (supports Gemini 3 Pro and Gemini 3.1 Flash Image with sizes 1K, 2K, 4K)
+  app.post('/api/genrite/generate-image', async (req, res) => {
+    try {
+      const { prompt, imageBase64, mimeType, aspectRatio, size, model } = req.body;
+
+      if (!prompt) {
+        return res.status(400).json({ error: 'Prompt is required' });
+      }
+
+      // Select default model based on input
+      // If we are editing (have imageBase64), use gemini-3.1-flash-image-preview
+      // Otherwise, default to gemini-3-pro-image-preview for high-quality generations
+      const selectedModel = model || (imageBase64 ? 'gemini-3.1-flash-image-preview' : 'gemini-3-pro-image-preview');
+
+      let cleanBase64 = '';
+      if (imageBase64) {
+        cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+      }
+
+      const parts: any[] = [];
+      if (cleanBase64) {
+        parts.push({
+          inlineData: {
+            data: cleanBase64,
+            mimeType: mimeType || 'image/png'
+          }
+        });
+      }
+      parts.push({ text: prompt });
+
+      const response = await generateContentWithRetry(ai, {
+        model: selectedModel,
+        contents: { parts },
+        config: {
+          imageConfig: {
+            aspectRatio: aspectRatio || "1:1",
+            imageSize: size || "1K"
+          }
+        }
+      });
+
+      let generatedImageBase64 = '';
+      const candidateParts = response.candidates?.[0]?.content?.parts || [];
+      for (const part of candidateParts) {
+        if (part.inlineData) {
+          generatedImageBase64 = part.inlineData.data;
+          break;
+        }
+      }
+
+      if (!generatedImageBase64) {
+        // Fallback check: sometimes it might be under content parts
+        return res.status(500).json({ error: 'No image was generated by the model. Try a different prompt.' });
+      }
+
+      res.json({
+        success: true,
+        imageBase64: `data:image/png;base64,${generatedImageBase64}`
+      });
+
+    } catch (error: any) {
+      console.error('Image generation error:', error);
+      res.status(500).json({ error: error.message || 'Image generation failed' });
+    }
+  });
+
+  // 2. Analyze Product Image and suggest premium photo prompts
+  app.post('/api/genrite/analyze-product', async (req, res) => {
+    try {
+      const { imageBase64, mimeType } = req.body;
+
+      if (!imageBase64) {
+        return res.status(400).json({ error: 'imageBase64 is required' });
+      }
+
+      const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+
+      const response = await generateContentWithRetry(ai, {
+        model: 'gemini-3.5-flash',
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                data: cleanBase64,
+                mimeType: mimeType || 'image/jpeg'
+              }
+            },
+            {
+              text: 'Analyze this product and write the perfect prompt to generate a professional product photo with white background. Be specific about the product, its features, and the desired photography style.'
+            }
+          ]
+        }
+      });
+
+      const suggestedPrompt = response.text || 'A premium product shot';
+
+      res.json({
+        success: true,
+        suggestedPrompt: suggestedPrompt
+      });
+
+    } catch (error: any) {
+      console.error('Product analysis error:', error);
+      res.status(500).json({ error: error.message || 'Product analysis failed' });
+    }
+  });
+
+  // 3. Initiate Veo Video Generation (Veo 3.1 Fast)
+  app.post('/api/genrite/generate-video', async (req, res) => {
+    try {
+      const { prompt, imageBase64, mimeType, aspectRatio } = req.body;
+
+      let imagePayload = undefined;
+      if (imageBase64) {
+        const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+        imagePayload = {
+          imageBytes: cleanBase64,
+          mimeType: mimeType || 'image/png'
+        };
+      }
+
+      const operation = await ai.models.generateVideos({
+        model: 'veo-3.1-fast-generate-preview',
+        prompt: prompt || 'Cinematic product promotional video, high-end commercial',
+        image: imagePayload,
+        config: {
+          numberOfVideos: 1,
+          resolution: '720p',
+          aspectRatio: aspectRatio || '16:9'
+        }
+      });
+
+      res.json({
+        success: true,
+        operationName: operation.name
+      });
+
+    } catch (error: any) {
+      console.error('Video generation start error:', error);
+      res.status(500).json({ error: error.message || 'Video generation failed to start' });
+    }
+  });
+
+  // 4. Poll Veo Video Generation Status
+  app.post('/api/genrite/video-status', async (req, res) => {
+    try {
+      const { operationName } = req.body;
+      if (!operationName) {
+        return res.status(400).json({ error: 'operationName is required' });
+      }
+
+      const op = { name: operationName };
+      const updated = await ai.operations.getVideosOperation({ operation: op as any });
+
+      res.json({
+        success: true,
+        done: updated.done,
+        error: updated.error,
+        response: updated.response
+      });
+
+    } catch (error: any) {
+      console.error('Video status error:', error);
+      res.status(500).json({ error: error.message || 'Failed to check video status' });
+    }
+  });
+
+  // 5. Download/Stream Veo Video
+  app.get('/api/genrite/video-download', async (req, res) => {
+    try {
+      const operationName = req.query.operationName as string;
+      if (!operationName) {
+        return res.status(400).json({ error: 'operationName is required' });
+      }
+
+      const op = { name: operationName };
+      const updated = await ai.operations.getVideosOperation({ operation: op as any });
+      const uri = updated.response?.generatedVideos?.[0]?.video?.uri;
+
+      if (!uri) {
+        return res.status(404).json({ error: 'Video URL not found in operation response' });
+      }
+
+      const videoRes = await fetch(uri, {
+        headers: { 'x-goog-api-key': apiKey || '' },
+      });
+
+      res.setHeader('Content-Type', 'video/mp4');
+
+      if (videoRes.body) {
+        const reader = videoRes.body.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(value);
+        }
+      }
+      res.end();
+
+    } catch (error: any) {
+      console.error('Video download error:', error);
+      res.status(500).json({ error: error.message || 'Failed to download video' });
+    }
+  });
+
+  // Mount brochure API routes
+  app.use('/api/chat', chatRoutes);
+  app.use('/api/chatwoot', chatwootRoutes);
+  app.use('/api/woocommerce', woocommerceRoutes);
 
   // GET /api/health — health check
   app.get('/api/health', (req, res) => {

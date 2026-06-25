@@ -127,6 +127,13 @@ export function HeroSection({ onContactClick }: HeroSectionProps) {
               {link.label}
             </button>
           ))}
+          
+          <button
+            onClick={() => navigate("/genrite")}
+            className="text-[#B600A8] text-xs font-bold uppercase tracking-widest hover:opacity-85 transition-opacity cursor-pointer"
+          >
+            Genrite ✦
+          </button>
         </div>
       </motion.nav>
 

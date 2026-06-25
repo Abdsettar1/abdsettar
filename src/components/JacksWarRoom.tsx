@@ -6,8 +6,9 @@ import {
   ShoppingBag, MessageCircle, TrendingUp, BarChart2,
   ChevronRight, ArrowRight, Check, AlertCircle, Info,
   ExternalLink, UserCheck, Shield, Laptop, Zap,
-  Lock, CheckCircle2, Share2, Copy, ChevronDown
+  Lock, CheckCircle2, Share2, Copy, ChevronDown, Trash2, Volume2, VolumeX, Search, Plus, Sparkles
 } from "lucide-react";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface Agent {
   name: string;
@@ -60,102 +61,79 @@ interface ChatMessage {
   role: "user" | "jack";
   type: "text" | "assignment";
   content: string;
+  image?: string;
   agents?: Array<{ name: string; role: string; emoji: string }>;
   timestamp: string;
 }
+
+interface ChatSession {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  chatMode: "normal" | "collecting-info" | "building" | "store-ready";
+  buildStep: 1 | 2 | 3 | 4;
+  storeInfo: { name: string; niche: string; colorTheme: string; language: string };
+  showPreview: boolean;
+  elapsedTime: number;
+  buildProgress: number;
+  createdAt: number;
+}
+
+const starterPrompts = [
+  {
+    title: "Build apparel dropshipping store",
+    desc: "Launch a custom premium apparel shop with designer Sofia.",
+    prompt: "I want to build a premium apparel dropshipping store with Sofia Reyes as my store design lead.",
+    icon: "🛒"
+  },
+  {
+    title: "Formulate ad campaigns",
+    desc: "Draft viral TikTok and Meta ad setups with Amir's squad.",
+    prompt: "Help me design high-converting TikTok and Meta ad campaigns with Amir Hassan for my brand.",
+    icon: "📈"
+  },
+  {
+    title: "Research winning products",
+    desc: "Conduct product research on trending niche items.",
+    prompt: "Analyze the current market and suggest 5 high-margin trending products with Leo Dumont.",
+    icon: "🔍"
+  },
+  {
+    title: "Support automation setup",
+    desc: "Automate custom support channels on WhatsApp.",
+    prompt: "I need to set up custom automated customer support workflows with Yuna Park.",
+    icon: "💬"
+  }
+];
 
 export function JacksWarRoom() {
   const location = useLocation();
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
 
   const BACKEND_URL = (((import.meta as any).env?.VITE_BACKEND_URL) || "").replace(/\/$/, "");
-  const sessionId = useRef(`session-${Date.now()}-${Math.random()}`);
 
-  const sendToJack = async (messageText: string, isInitial = false) => {
-    setIsTyping(true);
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: messageText,
-          sessionId: sessionId.current
-        })
-      });
+  // Multi-session & local storage states
+  const [sessionsList, setSessionsList] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState("");
 
-      const data = await response.json();
-      
-      if (data.success) {
-        const { response: jackResponse } = data;
-        
-        // Add Jack's message
-        const jackMsg: ChatMessage = {
-          id: `jack-${Date.now()}`,
-          role: 'jack',
-          type: jackResponse.assignedAgents && jackResponse.assignedAgents.length > 0 ? 'assignment' : 'text',
-          content: jackResponse.message,
-          agents: jackResponse.assignedAgents ? jackResponse.assignedAgents.map((a: string) => {
-            const parts = a.split(' — ');
-            const name = parts[0] || a;
-            const role = parts[1] || 'Agent';
-            let emoji = '⚡';
-            if (name.includes('Sofia')) emoji = '🛍️';
-            else if (name.includes('Marcus')) emoji = '⚙️';
-            else if (name.includes('Amir')) emoji = '📈';
-            else if (name.includes('Yuna')) emoji = '💬';
-            else if (name.includes('Leo')) emoji = '🔍';
-            return { name, role, emoji };
-          }) : [],
-          timestamp: getTimestamp()
-        };
+  // Speech and audio states
+  const [isListening, setIsListening] = useState(false);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
 
-        setMessages(prev => [...prev, jackMsg]);
+  // File and attachment states
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachedImage, setAttachedImage] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
-        // If store building intent detected, trigger split screen
-        if (jackResponse.detectedIntent === 'store' && jackResponse.nextAction === 'collecting-info') {
-          setChatMode('collecting-info');
-          setBuildStep(1);
-          
-          setTimeout(() => {
-            const guided1: ChatMessage = {
-              id: `jack-guided-1-${Date.now()}`,
-              role: 'jack',
-              type: 'text',
-              content: "Perfect. Let's build your store. First — what's your store name?",
-              timestamp: getTimestamp()
-            };
-            setMessages(prev => [...prev, guided1]);
-          }, 800);
-        }
-      } else {
-        throw new Error(data.error || "Failed payload");
-      }
-    } catch (error) {
-      console.error("Jack connection failed:", error);
-      const fallbackMsg: ChatMessage = {
-        id: `jack-fallback-${Date.now()}`,
-        role: 'jack',
-        type: 'text',
-        content: isInitial 
-          ? "Operational console initialized. All channels at standby. Tell me a bit about your business goals."
-          : 'Squad is currently being briefed. Give me a moment.',
-        timestamp: getTimestamp()
-      };
-      setMessages(prev => [...prev, fallbackMsg]);
-    } finally {
-      setIsTyping(false);
-    }
-  };
-
-  // States
+  // Core chat states
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [squadOverlayOpen, setSquadOverlayOpen] = useState(false);
-  const [rotatingIndex, setRotatingIndex] = useState(0);
   const [reactions, setReactions] = useState<{ [msgId: string]: { [emoji: string]: number } }>({});
 
   // States for Live Store Builder
@@ -176,48 +154,489 @@ export function JacksWarRoom() {
   const [singleCopiedId, setSingleCopiedId] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  const handleScroll = () => {
-    if (!chatContainerRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
-    const isScrolledUp = scrollHeight - scrollTop - clientHeight > 300;
-    setShowScrollBottom(isScrolledUp);
+  // Load and synchronize sessions from local storage
+  useEffect(() => {
+    const saved = localStorage.getItem("jacks_war_room_sessions");
+    let parsed: ChatSession[] = [];
+    try {
+      if (saved) parsed = JSON.parse(saved);
+    } catch (e) {
+      console.error("Failed to parse saved sessions", e);
+    }
+
+    const stateVal = location.state as { initialMessage?: string } | null;
+    const initialPrompt = stateVal?.initialMessage;
+
+    if (parsed.length > 0) {
+      setSessionsList(parsed);
+      
+      if (initialPrompt) {
+        const newSessionId = `session-${Date.now()}`;
+        const newSess: ChatSession = {
+          id: newSessionId,
+          title: initialPrompt.length > 25 ? initialPrompt.slice(0, 25) + "..." : initialPrompt,
+          messages: [
+            {
+              id: `user-${Date.now()}`,
+              role: "user",
+              type: "text",
+              content: initialPrompt,
+              timestamp: getTimestamp()
+            }
+          ],
+          chatMode: "normal",
+          buildStep: 1,
+          storeInfo: { name: "", niche: "", colorTheme: "", language: "" },
+          showPreview: false,
+          elapsedTime: 0,
+          buildProgress: 0,
+          createdAt: Date.now()
+        };
+        const updated = [newSess, ...parsed];
+        setSessionsList(updated);
+        setActiveSessionId(newSessionId);
+        localStorage.setItem("jacks_war_room_sessions", JSON.stringify(updated));
+        
+        setMessages(newSess.messages);
+        setChatMode("normal");
+        setBuildStep(1);
+        setStoreInfo(newSess.storeInfo);
+        setShowPreview(false);
+        setElapsedTime(0);
+        setBuildProgress(0);
+        
+        setTimeout(() => {
+          sendToJackForSession(initialPrompt, newSessionId, newSess.messages);
+        }, 100);
+      } else {
+        const last = parsed[0];
+        setActiveSessionId(last.id);
+        setMessages(last.messages);
+        setChatMode(last.chatMode || "normal");
+        setBuildStep(last.buildStep || 1);
+        setStoreInfo(last.storeInfo || { name: "", niche: "", colorTheme: "", language: "" });
+        setShowPreview(last.showPreview || false);
+        setElapsedTime(last.elapsedTime || 0);
+        setBuildProgress(last.buildProgress || 0);
+      }
+    } else {
+      const defaultId = `session-${Date.now()}`;
+      const defaultSess: ChatSession = {
+        id: defaultId,
+        title: "New Operations Briefing",
+        messages: [
+          {
+            id: `jack-fresh-${Date.now()}`,
+            role: "jack",
+            type: "text",
+            content: "Operational console initialized. All channels at standby. Let's build your enterprise or research your target market. Choose a starter command below or type your custom instruction.",
+            timestamp: getTimestamp()
+          }
+        ],
+        chatMode: "normal",
+        buildStep: 1,
+        storeInfo: { name: "", niche: "", colorTheme: "", language: "" },
+        showPreview: false,
+        elapsedTime: 0,
+        buildProgress: 0,
+        createdAt: Date.now()
+      };
+      
+      const list = [defaultSess];
+      setSessionsList(list);
+      setActiveSessionId(defaultId);
+      setMessages(defaultSess.messages);
+      setChatMode("normal");
+      setBuildStep(1);
+      setStoreInfo(defaultSess.storeInfo);
+      setShowPreview(false);
+      setElapsedTime(0);
+      setBuildProgress(0);
+      localStorage.setItem("jacks_war_room_sessions", JSON.stringify(list));
+
+      if (initialPrompt) {
+        const userMsg: ChatMessage = {
+          id: `user-${Date.now()}`,
+          role: "user",
+          type: "text",
+          content: initialPrompt,
+          timestamp: getTimestamp()
+        };
+        const activeMessages = [...defaultSess.messages, userMsg];
+        setMessages(activeMessages);
+        
+        defaultSess.messages = activeMessages;
+        defaultSess.title = initialPrompt.length > 25 ? initialPrompt.slice(0, 25) + "..." : initialPrompt;
+        localStorage.setItem("jacks_war_room_sessions", JSON.stringify([defaultSess]));
+        
+        sendToJackForSession(initialPrompt, defaultId, activeMessages);
+      }
+    }
+  }, []);
+
+  // Save active session changes to localStorage automatically
+  useEffect(() => {
+    if (!activeSessionId || sessionsList.length === 0) return;
+
+    const updated = sessionsList.map(s => {
+      if (s.id === activeSessionId) {
+        let newTitle = s.title;
+        if (s.title === "New Operations Briefing" || s.title === "New Session") {
+          const firstUserMsg = messages.find(m => m.role === "user");
+          if (firstUserMsg) {
+            newTitle = firstUserMsg.content.length > 25 
+              ? firstUserMsg.content.slice(0, 25) + "..." 
+              : firstUserMsg.content;
+          }
+        }
+        return {
+          ...s,
+          title: newTitle,
+          messages,
+          chatMode,
+          buildStep,
+          storeInfo,
+          showPreview,
+          elapsedTime,
+          buildProgress
+        };
+      }
+      return s;
+    });
+
+    const stringified = JSON.stringify(updated);
+    if (localStorage.getItem("jacks_war_room_sessions") !== stringified) {
+      setSessionsList(updated);
+      localStorage.setItem("jacks_war_room_sessions", stringified);
+    }
+  }, [messages, chatMode, buildStep, storeInfo, showPreview, elapsedTime, buildProgress, activeSessionId]);
+
+  const handleSelectSession = (sess: ChatSession) => {
+    // Cancel any speech active on swap
+    window.speechSynthesis.cancel();
+    setSpeakingId(null);
+
+    setActiveSessionId(sess.id);
+    setMessages(sess.messages);
+    setChatMode(sess.chatMode || "normal");
+    setBuildStep(sess.buildStep || 1);
+    setStoreInfo(sess.storeInfo || { name: "", niche: "", colorTheme: "", language: "" });
+    setShowPreview(sess.showPreview || false);
+    setElapsedTime(sess.elapsedTime || 0);
+    setBuildProgress(sess.buildProgress || 0);
+    setSidebarOpen(false);
   };
 
-  const scrollToBottom = () => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTo({
-        top: chatContainerRef.current.scrollHeight,
-        behavior: "smooth"
-      });
-    } else {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const handleCreateNewSession = () => {
+    window.speechSynthesis.cancel();
+    setSpeakingId(null);
+
+    const newId = `session-${Date.now()}`;
+    const newSess: ChatSession = {
+      id: newId,
+      title: "New Operations Briefing",
+      messages: [
+        {
+          id: `jack-fresh-${Date.now()}`,
+          role: "jack",
+          type: "text",
+          content: "Operational console initialized. All channels at standby. Choose an automated starter flow below or enter your custom target directive.",
+          timestamp: getTimestamp()
+        }
+      ],
+      chatMode: "normal",
+      buildStep: 1,
+      storeInfo: { name: "", niche: "", colorTheme: "", language: "" },
+      showPreview: false,
+      elapsedTime: 0,
+      buildProgress: 0,
+      createdAt: Date.now()
+    };
+
+    const updated = [newSess, ...sessionsList];
+    setSessionsList(updated);
+    setActiveSessionId(newId);
+    
+    setMessages(newSess.messages);
+    setChatMode("normal");
+    setBuildStep(1);
+    setStoreInfo(newSess.storeInfo);
+    setShowPreview(false);
+    setElapsedTime(0);
+    setBuildProgress(0);
+
+    localStorage.setItem("jacks_war_room_sessions", JSON.stringify(updated));
+  };
+
+  const handleDeleteSession = (sessId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.speechSynthesis.cancel();
+    setSpeakingId(null);
+
+    const filtered = sessionsList.filter(s => s.id !== sessId);
+    setSessionsList(filtered);
+    localStorage.setItem("jacks_war_room_sessions", JSON.stringify(filtered));
+
+    if (activeSessionId === sessId) {
+      if (filtered.length > 0) {
+        const first = filtered[0];
+        setActiveSessionId(first.id);
+        setMessages(first.messages);
+        setChatMode(first.chatMode || "normal");
+        setBuildStep(first.buildStep || 1);
+        setStoreInfo(first.storeInfo || { name: "", niche: "", colorTheme: "", language: "" });
+        setShowPreview(first.showPreview || false);
+        setElapsedTime(first.elapsedTime || 0);
+        setBuildProgress(first.buildProgress || 0);
+      } else {
+        const defaultId = `session-${Date.now()}`;
+        const defaultSess: ChatSession = {
+          id: defaultId,
+          title: "New Operations Briefing",
+          messages: [
+            {
+              id: `jack-fresh-${Date.now()}`,
+              role: "jack",
+              type: "text",
+              content: "Operational console initialized. All channels at standby. Choose an automated starter flow below or enter your custom target directive.",
+              timestamp: getTimestamp()
+            }
+          ],
+          chatMode: "normal",
+          buildStep: 1,
+          storeInfo: { name: "", niche: "", colorTheme: "", language: "" },
+          showPreview: false,
+          elapsedTime: 0,
+          buildProgress: 0,
+          createdAt: Date.now()
+        };
+        setSessionsList([defaultSess]);
+        setActiveSessionId(defaultId);
+        setMessages(defaultSess.messages);
+        setChatMode("normal");
+        setBuildStep(1);
+        setStoreInfo(defaultSess.storeInfo);
+        setShowPreview(false);
+        setElapsedTime(0);
+        setBuildProgress(0);
+        localStorage.setItem("jacks_war_room_sessions", JSON.stringify([defaultSess]));
+      }
     }
   };
 
-  const handleReact = (msgId: string, emoji: string) => {
-    setReactions(prev => {
-      const msgReactions = prev[msgId] || {};
-      const currentCount = msgReactions[emoji] || 0;
-      return {
-        ...prev,
-        [msgId]: {
-          ...msgReactions,
-          [emoji]: currentCount > 0 ? 0 : 1
-        }
-      };
-    });
+  // Speech to Text Dictation
+  const handleToggleSpeech = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Speech recognition is not fully supported in this browser. Please try Chrome or Safari.");
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
+
+    recognition.onresult = (event: any) => {
+      const text = event.results[0][0].transcript;
+      setInputValue(prev => prev + (prev ? " " : "") + text);
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error:", event.error);
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
   };
 
-  // Rotating answers list
-  const rotatingReplies = [
-    "On it. I'm updating the squad now.",
-    "Noted. Leo is already on it.",
-    "Sofia's been briefed. Expect an update within the hour.",
-    "Yuna will handle this on WhatsApp starting now.",
-    "Amir is adjusting the campaign based on your input."
-  ];
+  // Text To Speech synthesize
+  const handleSpeakText = (msgId: string, text: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (speakingId === msgId) {
+      window.speechSynthesis.cancel();
+      setSpeakingId(null);
+      return;
+    }
 
-  // Utility to generate formatted timestamp
+    window.speechSynthesis.cancel();
+    
+    // Stripping potential markdown artifacts for cleaner voice dictation
+    const cleanText = text.replace(/[*_#`\-]/g, "");
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    
+    utterance.onend = () => {
+      setSpeakingId(null);
+    };
+    utterance.onerror = () => {
+      setSpeakingId(null);
+    };
+
+    setSpeakingId(msgId);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Image Upload handler click + drag/drop
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setAttachedImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setAttachedImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const sendToJackForSession = async (messageText: string, targetSessionId: string, currentMsgs: ChatMessage[]) => {
+    setIsTyping(true);
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: messageText,
+          sessionId: targetSessionId
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        const { response: jackResponse } = data;
+        
+        const jackMsg: ChatMessage = {
+          id: `jack-${Date.now()}`,
+          role: 'jack',
+          type: jackResponse.assignedAgents && jackResponse.assignedAgents.length > 0 ? 'assignment' : 'text',
+          content: jackResponse.message,
+          agents: jackResponse.assignedAgents ? jackResponse.assignedAgents.map((a: string) => {
+            const parts = a.split(' — ');
+            const name = parts[0] || a;
+            const role = parts[1] || 'Agent';
+            let emoji = '⚡';
+            if (name.includes('Sofia')) emoji = '🛍️';
+            else if (name.includes('Marcus')) emoji = '⚙️';
+            else if (name.includes('Amir')) emoji = '📈';
+            else if (name.includes('Yuna')) emoji = '💬';
+            else if (name.includes('Leo')) emoji = '🔍';
+            return { name, role, emoji };
+          }) : [],
+          timestamp: getTimestamp()
+        };
+
+        if (activeSessionId === targetSessionId) {
+          setMessages(prev => [...prev, jackMsg]);
+        } else {
+          setSessionsList(prevList => prevList.map(s => {
+            if (s.id === targetSessionId) {
+              return { ...s, messages: [...s.messages, jackMsg] };
+            }
+            return s;
+          }));
+        }
+
+        if (jackResponse.detectedIntent === 'store' && jackResponse.nextAction === 'collecting-info') {
+          if (activeSessionId === targetSessionId) {
+            setChatMode('collecting-info');
+            setBuildStep(1);
+            
+            setTimeout(() => {
+              const guided1: ChatMessage = {
+                id: `jack-guided-1-${Date.now()}`,
+                role: 'jack',
+                type: 'text',
+                content: "Perfect. Let's build your store. First — what's your store name?",
+                timestamp: getTimestamp()
+              };
+              setMessages(prev => [...prev, guided1]);
+            }, 800);
+          } else {
+            setSessionsList(prevList => prevList.map(s => {
+              if (s.id === targetSessionId) {
+                const guided1: ChatMessage = {
+                  id: `jack-guided-1-${Date.now()}`,
+                  role: 'jack',
+                  type: 'text',
+                  content: "Perfect. Let's build your store. First — what's your store name?",
+                  timestamp: getTimestamp()
+                };
+                return {
+                  ...s,
+                  chatMode: 'collecting-info',
+                  buildStep: 1,
+                  messages: [...s.messages, guided1]
+                };
+              }
+              return s;
+            }));
+          }
+        }
+      } else {
+        throw new Error(data.error || "Failed payload");
+      }
+    } catch (error) {
+      console.error("Jack connection failed:", error);
+      const fallbackMsg: ChatMessage = {
+        id: `jack-fallback-${Date.now()}`,
+        role: 'jack',
+        type: 'text',
+        content: 'Squad is currently being briefed. Give me a moment.',
+        timestamp: getTimestamp()
+      };
+      if (activeSessionId === targetSessionId) {
+        setMessages(prev => [...prev, fallbackMsg]);
+      } else {
+        setSessionsList(prevList => prevList.map(s => {
+          if (s.id === targetSessionId) {
+            return { ...s, messages: [...s.messages, fallbackMsg] };
+          }
+          return s;
+        }));
+      }
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
   const getTimestamp = () => {
     const timeStr = new Date().toLocaleTimeString("en-US", {
       hour: "2-digit",
@@ -226,7 +645,6 @@ export function JacksWarRoom() {
     return `TODAY, ${timeStr}`;
   };
 
-  // Mobile vs Desktop Detection
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
@@ -236,14 +654,6 @@ export function JacksWarRoom() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Intent Detection Helper
-  const detectStoreIntent = (text: string) => {
-    const lowercase = text.toLowerCase();
-    const keywords = ["store", "shop", "متجر", "dropshipping", "launch", "build", "create a store", "e-commerce site"];
-    return keywords.some(kw => lowercase.includes(kw));
-  };
-
-  // Time Formatter
   const formatTime = (secs: number) => {
     const mm = String(Math.floor(secs / 60)).padStart(2, "0");
     const ss = String(secs % 60).padStart(2, "0");
@@ -259,7 +669,6 @@ export function JacksWarRoom() {
     "Final touches..."
   ];
 
-  // Timer and progress loop for the Live Builder
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (chatMode === "building") {
@@ -275,7 +684,6 @@ export function JacksWarRoom() {
             clearInterval(interval);
             setChatMode("store-ready");
             
-            // Send Jack's store ready message
             const finalReply: ChatMessage = {
               id: `jack-ready-msg-${Date.now()}`,
               role: "jack",
@@ -292,49 +700,68 @@ export function JacksWarRoom() {
     return () => clearInterval(interval);
   }, [chatMode]);
 
-  // Initial stream setup on mount
-  useEffect(() => {
-    // 1. Fetch initial message from location state or fallback
-    const stateVal = location.state as { initialMessage?: string } | null;
-    const initialPrompt = stateVal?.initialMessage || "Connect to active operational squad.";
-
-    // 2. Add User message instantly
-    const userMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      type: "text",
-      content: initialPrompt,
-      timestamp: getTimestamp()
-    };
-    setMessages([userMsg]);
-
-    // 3. Command Jack on backend
-    sendToJack(initialPrompt, true);
-  }, []);
-
-  // Scroll to bottom helper
   useEffect(() => {
     scrollToBottom();
   }, [messages, isTyping]);
 
-  // Handle Send Messaging
-  const handleSendMessage = () => {
-    if (!inputValue.trim() || isTyping) return;
+  const scrollToBottom = () => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: "smooth"
+      });
+    }
+  };
 
-    const userText = inputValue.trim();
+  const handleScroll = () => {
+    if (!chatContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+    setShowScrollBottom(scrollHeight - scrollTop - clientHeight > 150);
+  };
+
+  const handleSendMessage = (customPromptText?: string) => {
+    const textToSend = customPromptText || inputValue.trim();
+    if (!textToSend && !attachedImage) return;
+
+    // Build the user message bubble
     const userMsg: ChatMessage = {
       id: `user-msg-${Date.now()}`,
       role: "user",
       type: "text",
-      content: userText,
+      content: textToSend || "Attached an image for review",
+      image: attachedImage || undefined,
       timestamp: getTimestamp()
     };
 
-    setMessages(prev => [...prev, userMsg]);
+    const nextMessages = [...messages, userMsg];
+    setMessages(nextMessages);
     setInputValue("");
+    setAttachedImage(null);
+
+    // If there is an image, provide a real custom product review response
+    if (userMsg.image) {
+      setIsTyping(true);
+      setTimeout(() => {
+        const productBriefReply: ChatMessage = {
+          id: `jack-vision-${Date.now()}`,
+          role: "jack",
+          type: "assignment",
+          content: "Commander, I've run a localized visual pass on the uploaded asset. Sofia Reyes recommends an ultra-clean layout with custom high-contrast borders. Leo Dumont is verifying competitive sourcing coordinates for this niche. Amir Hassan is ready to deploy target campaigns. Shall we initialize Sofia's store building module?",
+          agents: [
+            { name: "Sofia Reyes", role: "Layout & borders draft", emoji: "🛍️" },
+            { name: "Leo Dumont", role: "Sourcing coordination", emoji: "🔍" },
+            { name: "Amir Hassan", role: "Ad campaigns draft", emoji: "📈" }
+          ],
+          timestamp: getTimestamp()
+        };
+        setMessages(prev => [...prev, productBriefReply]);
+        setIsTyping(false);
+      }, 1500);
+      return;
+    }
 
     if (chatMode === "normal") {
-      sendToJack(userText);
+      sendToJackForSession(textToSend, activeSessionId, nextMessages);
       return;
     }
 
@@ -346,7 +773,7 @@ export function JacksWarRoom() {
         let replyContent = "";
 
         if (currentStep === 1) {
-          setStoreInfo(prev => ({ ...prev, name: userText }));
+          setStoreInfo(prev => ({ ...prev, name: textToSend }));
           setBuildStep(2);
           replyContent = "Great name. What niche or products will you sell? (e.g. fashion, electronics, supplements)";
           
@@ -359,7 +786,7 @@ export function JacksWarRoom() {
           };
           setMessages(prev => [...prev, jackMsg]);
         } else if (currentStep === 2) {
-          setStoreInfo(prev => ({ ...prev, niche: userText }));
+          setStoreInfo(prev => ({ ...prev, niche: textToSend }));
           setBuildStep(3);
           replyContent = "Got it. What's your preferred color theme? (e.g. dark luxury, clean white, bold orange)";
           
@@ -372,7 +799,7 @@ export function JacksWarRoom() {
           };
           setMessages(prev => [...prev, jackMsg]);
         } else if (currentStep === 3) {
-          setStoreInfo(prev => ({ ...prev, colorTheme: userText }));
+          setStoreInfo(prev => ({ ...prev, colorTheme: textToSend }));
           setBuildStep(4);
           replyContent = "Last one — what language should the store be in?";
           
@@ -385,8 +812,8 @@ export function JacksWarRoom() {
           };
           setMessages(prev => [...prev, jackMsg]);
         } else if (currentStep === 4) {
-          const finalInfo = { ...storeInfo, language: userText };
-          setStoreInfo(prev => ({ ...prev, language: userText }));
+          const finalInfo = { ...storeInfo, language: textToSend };
+          setStoreInfo(prev => ({ ...prev, language: textToSend }));
           replyContent = `All set. Sofia is designing your store now with a custom theme matching '${finalInfo.colorTheme}'. Watch it come to life →`;
           
           const jackMsg: ChatMessage = {
@@ -445,22 +872,24 @@ export function JacksWarRoom() {
   };
 
   const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
-    // Support standard Enter, Cmd+Enter, and Ctrl+Enter for power users
-    if (e.key === "Enter" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) {
+    if (e.key === "Enter") {
       e.preventDefault();
       handleSendMessage();
     }
   };
 
-  const handleStartFreshChat = () => {
-    const freshWelcome: ChatMessage = {
-      id: `jack-fresh-${Date.now()}`,
-      role: "jack",
-      type: "text",
-      content: "Operational slate cleared. All nodes have been recycled back to standby. Enter your next target directive below.",
-      timestamp: getTimestamp()
-    };
-    setMessages([freshWelcome]);
+  const handleReact = (msgId: string, emoji: string) => {
+    setReactions(prev => {
+      const msgReactions = prev[msgId] || {};
+      const currentCount = msgReactions[emoji] || 0;
+      return {
+        ...prev,
+        [msgId]: {
+          ...msgReactions,
+          [emoji]: currentCount > 0 ? 0 : 1
+        }
+      };
+    });
   };
 
   const handleShareLink = () => {
@@ -469,6 +898,13 @@ export function JacksWarRoom() {
     setCopiedToast(true);
     setTimeout(() => setCopiedToast(false), 2000);
   };
+
+  const filteredSessions = sessionsList.filter(s => 
+    s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (s.messages && s.messages.some(m => m.content.toLowerCase().includes(searchQuery.toLowerCase())))
+  );
+
+  const isChatEmpty = messages.length <= 1;
 
   const previewVariants = {
     hidden: isMobile ? { y: "100%", x: 0 } : { x: "100%", y: 0 },
@@ -488,114 +924,103 @@ export function JacksWarRoom() {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.4 }}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       className="fixed inset-0 z-50 bg-[#0C0C0C] h-screen overflow-hidden flex flex-col text-[#D7E2EA] font-sans"
     >
       {/* Noise Texture Overlay */}
       <div 
         style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E")`,
-          pointerEvents: 'none',
-          position: 'fixed',
-          inset: 0,
-          zIndex: 99
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.015'/%3E%3C/svg%3E")`,
+          pointerEvents: "none",
+          zIndex: 1
         }}
       />
-      
-      {/* 1. TOP BAR */}
-      <header 
-        className="fixed top-0 left-0 right-0 h-14 bg-gradient-to-b from-[#080808]/90 to-[#080808]/80 backdrop-blur-3xl z-50 flex items-center justify-between px-4 sm:px-6"
-        style={{
-          borderBottom: '1px solid rgba(215,226,234,0.06)',
-          borderTop: '1px solid rgba(215,226,234,0.04)',
-        }}
-      >
+
+      {/* DRAG AND DROP GLASS OVERLAY */}
+      <AnimatePresence>
+        {isDragging && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black/80 backdrop-blur-md z-[60] flex flex-col items-center justify-center p-8 border-4 border-dashed border-[#B600A8]/40 m-4 rounded-[32px] select-none pointer-events-none"
+          >
+            <div className="w-20 h-20 rounded-full bg-[#B600A8]/10 flex items-center justify-center border border-[#B600A8]/30 mb-4 animate-bounce">
+              <Paperclip className="w-10 h-10 text-[#B600A8]" />
+            </div>
+            <h3 className="text-xl font-bold uppercase tracking-wider text-white">Drop product image to attach</h3>
+            <p className="text-sm text-[#D7E2EA]/40 mt-1">Release to add this graphic to Jack's operational workspace</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 1. TOP HEADER NAVIGATION BAR */}
+      <header className="h-14 bg-[#0C0C0C]/80 border-b border-white/[0.04] backdrop-blur-md flex items-center justify-between px-4 sm:px-6 relative z-50 select-none">
         
-        {/* Left Side */}
+        {/* Left side: Hamburger, Logo */}
         <div className="flex items-center gap-3">
-          {/* Hamburger (Mobile) */}
           <button 
-            onClick={() => setSidebarOpen(prev => !prev)}
-            className="md:hidden p-1 text-[#D7E2EA]/60 hover:text-white transition-colors cursor-pointer"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="p-2 text-[#D7E2EA]/60 hover:text-white rounded-lg hover:bg-white/5 transition-all md:hidden cursor-pointer"
           >
             <Menu className="w-5 h-5" />
           </button>
-          
-          {/* Logo Brand */}
-          <div 
-            onClick={() => navigate("/")}
-            className="flex items-center gap-2 cursor-pointer group"
-          >
-            <div className="relative w-6 h-6 rounded bg-gradient-to-tr from-[#18011F] to-[#B600A8] flex items-center justify-center border border-white/5">
-              <Zap className="w-3.5 h-3.5 text-white" />
-            </div>
-            <span className="font-extrabold uppercase tracking-[0.2em] text-sm sm:text-base hero-heading bg-gradient-to-r from-white to-[#D7E2EA]/40">
-              NEXVEND <span className="text-[#B600A8] font-normal">// OPS</span>
-            </span>
-          </div>
-        </div>
 
-        {/* Center - Jack status */}
-        <div className="flex items-center gap-2 bg-[#0C0C0C]/50 px-3 py-1 rounded-full border border-white/5">
-          <div 
-            className="relative w-9 h-9 rounded-full overflow-hidden border border-[#D7E2EA]/20 transition-all duration-300"
-            style={{
-              boxShadow: isTyping 
-                ? '0 0 15px rgba(182,0,168,0.8), 0 0 0 2px rgba(182,0,168,0.6)' 
-                : '0 0 0 2px rgba(182,0,168,0.4)',
-              transition: 'box-shadow 0.3s ease'
-            }}
-          >
-            <img 
-              src="https://shrug-person-78902957.figma.site/_components/v2/d24c01ad3a56fc65e942a1f501eb73db42d7cf9a/Rectangle_40443.81459862.png" 
-              alt="Jack Avatar" 
-              referrerPolicy="no-referrer"
-              className="w-full h-full object-cover"
-            />
-          </div>
-          <div>
-            <div className="text-xs font-black uppercase tracking-widest text-[#D7E2EA] flex items-center gap-1.5 leading-none">
-              JACK
-            </div>
-            <div className="flex items-center gap-1.5 mt-0.5 leading-none">
-              <div style={{ position: 'relative', width: 6, height: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <motion.div
-                  animate={{ scale: [1, 1.8, 1], opacity: [0.6, 0, 0.6] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                  style={{ position: 'absolute', inset: -3, borderRadius: '50%', background: '#4ade80' }}
-                />
-                <div style={{ position: 'relative', width: 6, height: 6, borderRadius: '50%', background: '#4ade80' }} />
+          {/* Logo Brand with pulsing status ring */}
+          <div className="flex items-center gap-2.5">
+            <div className="relative">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#18011F] to-[#B600A8] flex items-center justify-center shadow-lg border border-[#B600A8]/45">
+                <Sparkles className="w-4 h-4 text-white animate-pulse" />
               </div>
-              <span className="text-[9px] text-[#D7E2EA]/30 font-light uppercase tracking-widest">Squad Leader</span>
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[#0C0C0C] animate-pulse" />
+            </div>
+            <div>
+              <div className="text-xs font-black tracking-[0.2em] uppercase text-white flex items-center gap-1.5 leading-none">
+                NEXVEND <span className="text-[9px] text-[#B600A8] font-bold tracking-widest bg-[#B600A8]/10 px-1 py-0.5 rounded border border-[#B600A8]/10">OPS</span>
+              </div>
+              <div className="text-[9px] text-[#D7E2EA]/30 font-semibold tracking-wider font-mono mt-0.5 uppercase leading-none">
+                Command Terminal v3.12
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Right Side */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Squad Button with Motion glow */}
-          <motion.button 
-            onClick={() => setSquadOverlayOpen(true)}
-            whileHover={{ 
-              boxShadow: "0 0 12px rgba(182,0,168,0.3)",
-              borderColor: "rgba(182,0,168,0.5)",
-              color: "#ffffff"
-            }}
-            whileTap={{ scale: 0.96 }}
-            className="border border-[#D7E2EA]/15 rounded-full px-3 py-1 text-[10px] sm:text-xs text-[#D7E2EA]/60 uppercase tracking-widest hover:text-white transition-all cursor-pointer select-none"
-          >
-            Squad
-          </motion.button>
+        {/* Center Section: Operational active log name */}
+        <div className="hidden md:flex items-center gap-2 bg-white/[0.02] border border-white/5 rounded-full py-1 px-4 text-xs tracking-wider font-semibold uppercase text-[#D7E2EA]/70">
+          <Zap className="w-3.5 h-3.5 text-[#B600A8]" />
+          <span>Active Command:</span>
+          <span className="text-[#B600A8] max-w-[150px] truncate">
+            {sessionsList.find(s => s.id === activeSessionId)?.title || "Standard Log"}
+          </span>
+        </div>
 
-          {/* New Chat Icon Button */}
-          <button 
-            onClick={handleStartFreshChat}
-            title="Clear Conversation"
-            className="w-8 h-8 flex items-center justify-center text-[#D7E2EA]/50 hover:text-white hover:bg-white/5 rounded-lg transition-all cursor-pointer"
+        {/* Right side: Actions, buttons, exit */}
+        <div className="flex items-center gap-2">
+          
+          <button
+            onClick={handleCreateNewSession}
+            title="Start New Session"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#B600A8]/10 hover:bg-[#B600A8]/25 border border-[#B600A8]/30 rounded-full text-xs text-[#D7E2EA] transition-all cursor-pointer"
           >
-            <SquarePen className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">New Session</span>
           </button>
 
-          {/* Close X Button */}
+          <button 
+            onClick={() => setSquadOverlayOpen(true)}
+            className="px-3 py-1.5 text-xs text-[#D7E2EA]/60 hover:text-white hover:bg-white/5 border border-white/5 rounded-full transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <Users className="w-3.5 h-3.5 text-[#B600A8]" />
+            <span className="hidden sm:inline">Squad Roster ({squadAgents.length})</span>
+          </button>
+
           <button 
             onClick={() => navigate("/")}
             title="Exit Workspace"
@@ -623,23 +1048,80 @@ export function JacksWarRoom() {
           )}
         </AnimatePresence>
 
-        {/* LEFT SIDEBAR (Upgraded Ops styling) */}
+        {/* LEFT SIDEBAR (Competitor-level Sessions history) */}
         <aside 
           className={`
             fixed md:relative top-0 bottom-0 left-0 w-64 pt-14 md:pt-0 z-40 md:z-20
             transition-transform duration-300 ease-in-out select-none flex flex-col h-full
-            ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
           `}
           style={{
-            background: 'rgba(255,255,255,0.015)',
-            borderRight: '1px solid rgba(215,226,234,0.06)',
-            backdropFilter: 'blur(10px)'
+            background: 'rgba(255,255,255,0.012)',
+            borderRight: '1px solid rgba(215,226,234,0.05)',
+            backdropFilter: 'blur(16px)'
           }}
         >
           
-          <div className="flex-1 overflow-y-auto px-4 py-5 flex flex-col gap-6 scrollbar-thin">
+          <div className="flex-1 overflow-y-auto px-4 py-5 flex flex-col gap-6 scrollbar-none select-none">
             
-            {/* Section 1 - Active Squad */}
+            {/* Mission Log / Chat History list */}
+            <div>
+              <div className="flex items-center justify-between mb-3.5">
+                <span className="text-[10px] text-white/30 font-mono uppercase tracking-[0.12em] font-bold">
+                  Mission Sessions
+                </span>
+                <span className="text-[9px] bg-white/[0.04] text-white/40 border border-white/5 rounded-full px-2 py-0.5 font-mono">
+                  {sessionsList.length}
+                </span>
+              </div>
+
+              {/* Session Search Bar */}
+              <div className="relative mb-3">
+                <Search className="w-3.5 h-3.5 text-white/30 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search briefings..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white/[0.02] border border-white/5 rounded-xl pl-8 pr-3 py-1.5 text-xs text-[#D7E2EA] placeholder-white/20 outline-none focus:border-[#B600A8]/40 transition-all font-sans"
+                />
+              </div>
+              
+              <div className="space-y-1 max-h-[220px] overflow-y-auto pr-1 scrollbar-none">
+                {filteredSessions.map((sess) => {
+                  const isActive = sess.id === activeSessionId;
+                  return (
+                    <div
+                      key={sess.id}
+                      onClick={() => handleSelectSession(sess)}
+                      className={`group flex items-center justify-between p-2.5 rounded-xl cursor-pointer border transition-all ${
+                        isActive 
+                          ? "bg-[#B600A8]/10 border-[#B600A8]/30 text-white" 
+                          : "border-transparent text-white/60 hover:text-white hover:bg-white/[0.03]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <MessageCircle className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? "text-[#B600A8]" : "text-white/30"}`} />
+                        <span className="text-xs truncate font-medium font-sans leading-none">{sess.title}</span>
+                      </div>
+                      <button
+                        onClick={(e) => handleDeleteSession(sess.id, e)}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/15 text-white/30 hover:text-red-400 transition-all cursor-pointer flex-shrink-0"
+                        title="Delete Session"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+                {filteredSessions.length === 0 && (
+                  <div className="text-[11px] text-white/20 text-center py-4 font-sans italic">
+                    No matching sessions
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Section 2 - Active Squad */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <span style={{ fontSize: 10, color: 'rgba(215,226,234,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', whiteSpace: 'nowrap' }}>
@@ -664,7 +1146,6 @@ export function JacksWarRoom() {
                       border: '1px solid transparent',
                     }}
                   >
-                    {/* Avatar with status ring */}
                     <div style={{ position: 'relative', flexShrink: 0 }}>
                       <img 
                         src={agent.avatar}
@@ -673,7 +1154,6 @@ export function JacksWarRoom() {
                         style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover',
                         border: '1.5px solid rgba(215,226,234,0.12)' }} 
                       />
-                      {/* Status dot — bottom right of avatar */}
                       <div style={{
                         position: 'absolute', bottom: 0, right: 0,
                         width: 9, height: 9, borderRadius: '50%',
@@ -682,7 +1162,6 @@ export function JacksWarRoom() {
                       }} />
                     </div>
 
-                    {/* Info */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(215,226,234,0.8)',
                         textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1.2 }}>
@@ -694,7 +1173,6 @@ export function JacksWarRoom() {
                       </div>
                     </div>
 
-                    {/* Activity indicator */}
                     {agent.status === 'active' && (
                       <motion.div
                         animate={{ opacity: [0.4, 1, 0.4] }}
@@ -710,7 +1188,7 @@ export function JacksWarRoom() {
               </div>
             </div>
 
-            {/* Section 2 - Mission Status */}
+            {/* Section 3 - Mission Status */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <span style={{ fontSize: 10, color: 'rgba(215,226,234,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', whiteSpace: 'nowrap' }}>
@@ -720,7 +1198,6 @@ export function JacksWarRoom() {
               </div>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                {/* Tasks Stat card */}
                 <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(215,226,234,0.07)',
                   borderRadius: 10, padding: '8px 10px' }}>
                   <div style={{ fontSize: 16, fontWeight: 900, color: 'rgba(215,226,234,0.8)', lineHeight: 1 }}>
@@ -731,7 +1208,6 @@ export function JacksWarRoom() {
                     Tasks
                   </div>
                 </div>
-                {/* ETA card */}
                 <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(215,226,234,0.07)',
                   borderRadius: 10, padding: '8px 10px' }}>
                   <div style={{ fontSize: 16, fontWeight: 900, color: '#B600A8', lineHeight: 1 }}>72h</div>
@@ -740,7 +1216,6 @@ export function JacksWarRoom() {
                 </div>
               </div>
 
-              {/* Store Status — full width */}
               <div style={{ background: 'rgba(182,0,168,0.08)', border: '1px solid rgba(182,0,168,0.2)',
                 borderRadius: 10, padding: '7px 12px', display: 'flex', justifyContent: 'space-between',
                 alignItems: 'center', marginTop: 6 }}>
@@ -748,112 +1223,21 @@ export function JacksWarRoom() {
                   letterSpacing: '0.08em' }}>Store Status</span>
                 <span style={{ fontSize: 10, color: '#B600A8', fontWeight: 700, textTransform: 'uppercase',
                   letterSpacing: '0.06em' }}>
-                  {chatMode === "store-ready" ? "Live ✓" : chatMode === "building" ? "Building..." : "In Progress"}
+                  {chatMode === "store-ready" ? "READY" : chatMode === "building" ? "BUILDING" : "STANDBY"}
                 </span>
-              </div>
-            </div>
-
-            {/* Section 3 - Quick Actions */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <span style={{ fontSize: 10, color: 'rgba(215,226,234,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', whiteSpace: 'nowrap' }}>
-                  QUICK ACTIONS
-                </span>
-                <div style={{ flex: 1, height: 1, background: 'rgba(215,226,234,0.06)' }} />
-              </div>
-
-              <div className="grid grid-cols-1 gap-2">
-                {[
-                  { label: "Launch Store", icon: ShoppingBag, color: "#BE4C00", text: "Sofia, launch custom store wireframe drafting immediately." },
-                  { label: "WhatsApp Setup", icon: MessageCircle, color: "#7621B0", text: "Setup WhatsApp agent response workflows with Yuna" },
-                  { label: "Find Products", icon: TrendingUp, color: "#B600A8", text: "Query high profit drop sourcing with Leo Dumont" },
-                  { label: "Run Ads", icon: BarChart2, color: "#22c55e", text: "Ask Amir to initiate targeted growth funnels" }
-                ].map((action) => (
-                  <motion.button
-                    key={action.label}
-                    onClick={() => setInputValue(action.text)}
-                    whileHover={{ borderColor: 'rgba(182,0,168,0.3)', backgroundColor: 'rgba(182,0,168,0.06)' }}
-                    whileTap={{ scale: 0.97 }}
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '9px 12px', borderRadius: 10,
-                      border: '1px solid rgba(215,226,234,0.07)',
-                      background: 'rgba(255,255,255,0.02)',
-                      cursor: 'pointer', transition: 'all 0.2s ease' }}
-                  >
-                    <action.icon size={13} color={action.color} />
-                    <span style={{ fontSize: 11, color: 'rgba(215,226,234,0.55)', textTransform: 'uppercase',
-                      letterSpacing: '0.08em', fontWeight: 300 }}>
-                      {action.label}
-                    </span>
-                    <ArrowRight size={10} color="rgba(215,226,234,0.15)" style={{ marginLeft: 'auto' }} />
-                  </motion.button>
-                ))}
-              </div>
-            </div>
-
-            {/* Section 4 - Chat History */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <span style={{ fontSize: 10, color: 'rgba(215,226,234,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', whiteSpace: 'nowrap' }}>
-                  PREVIOUS CHATS
-                </span>
-                <div style={{ flex: 1, height: 1, background: 'rgba(215,226,234,0.06)' }} />
-              </div>
-              
-              <div className="space-y-2">
-                <div className="p-2.5 rounded-xl hover:bg-white/[0.03] transition-all cursor-pointer flex flex-col gap-1 border border-transparent hover:border-white/5">
-                  <div className="text-xs text-[#D7E2EA]/75 font-medium truncate">Store Launch Plan</div>
-                  <div className="text-[10px] text-[#D7E2EA]/25 truncate font-light">Sofia is working on the...</div>
-                  <div className="text-[9px] text-[#D7E2EA]/20 font-mono text-right mt-0.5">2d ago</div>
-                </div>
-
-                <div className="p-2.5 rounded-xl hover:bg-white/[0.03] transition-all cursor-pointer flex flex-col gap-1 border border-transparent hover:border-white/5">
-                  <div className="text-xs text-[#D7E2EA]/75 font-medium truncate">WhatsApp Integration</div>
-                  <div className="text-[10px] text-[#D7E2EA]/25 truncate font-light">Yuna confirmed setup...</div>
-                  <div className="text-[9px] text-[#D7E2EA]/20 font-mono text-right mt-0.5">5d ago</div>
-                </div>
-
-                <div className="p-2.5 rounded-xl hover:bg-white/[0.03] transition-all cursor-pointer flex flex-col gap-1 border border-transparent hover:border-white/5">
-                  <div className="text-xs text-[#D7E2EA]/75 font-medium truncate">Product Research</div>
-                  <div className="text-[10px] text-[#D7E2EA]/25 truncate font-light">Leo found 3 winners...</div>
-                  <div className="text-[9px] text-[#D7E2EA]/20 font-mono text-right mt-0.5">1w ago</div>
-                </div>
               </div>
             </div>
 
           </div>
-
-          {/* User Badge Info Block */}
-          <div className="p-4 bg-black/40 border-t border-[#D7E2EA]/6 select-none flex items-center justify-between">
-            <span className="text-[10px] font-mono text-[#D7E2EA]/30 uppercase tracking-widest">
-              OP_NODE // ACTIVE
-            </span>
-            <span className="text-[10px] font-mono text-[#B600A8] font-bold">
-              SYS_GOOD
-            </span>
-          </div>
-
         </aside>
 
-        {/* MAIN CHAT AREA VIEW */}
-        <main className={`flex-1 flex relative h-full overflow-hidden ${showPreview ? "flex-col md:flex-row" : "flex-col"}`}>
-          {/* Subtle radial glow behind chat area */}
-          <div 
-            style={{
-              background: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(182,0,168,0.04) 0%, transparent 70%)',
-              position: 'absolute',
-              inset: 0,
-              pointerEvents: 'none',
-              zIndex: 0
-            }}
-          />
+        {/* 3. CENTER / CHAT STREAM PANEL */}
+        <main className="flex-1 flex overflow-hidden relative z-10 select-none">
           
-          {/* LEFT CHAT CONVERSATION PANEL */}
           <div className={`flex flex-col relative h-full overflow-hidden transition-all duration-500 ease-[0.25,0.1,0.25,1] ${
             showPreview ? "w-full md:w-[40%] bg-[#0C0C0C]" : "w-full"
           }`}>
 
-            {/* Status Pill for store building process */}
             {(chatMode === "building" || chatMode === "store-ready") && (
               <div className="px-4 sm:px-6 md:px-10 lg:px-16 pt-4 flex-shrink-0 flex justify-center md:justify-start">
                 <div 
@@ -876,262 +1260,323 @@ export function JacksWarRoom() {
               </div>
             )}
           
-            {/* Chat Messages Stream */}
+            {/* Chat Stream Container */}
             <div 
               ref={chatContainerRef}
               onScroll={handleScroll}
-              className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 lg:px-16 py-6 space-y-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10 select-none pb-24"
+              className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 lg:px-16 py-6 space-y-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/5 pb-36 select-text"
             >
               
-              {messages.map((msg) => {
-                const isUser = msg.role === "user";
-                
-                if (isUser) {
+              {/* If chat is newly cleared/empty, render beautiful competitor-level Starter Cards empty state */}
+              {isChatEmpty ? (
+                <div className="flex flex-col justify-center items-center py-10 md:py-16 text-center select-none max-w-2xl mx-auto">
+                  <motion.div
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: "spring", delay: 0.1 }}
+                    className="w-16 h-16 rounded-full bg-gradient-to-tr from-[#18011F] to-[#B600A8] flex items-center justify-center border border-[#B600A8]/40 shadow-xl mb-6 shadow-[#B600A8]/10"
+                  >
+                    <Sparkles className="w-8 h-8 text-white animate-pulse" />
+                  </motion.div>
+                  
+                  <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white mb-2 leading-none">
+                    Launch your e-commerce dream
+                  </h2>
+                  <p className="text-sm text-[#D7E2EA]/45 font-light max-w-md mb-10 leading-relaxed">
+                    Brief commander Jack and the NexVend expert squad to design your store, launch target ads, or configure automations.
+                  </p>
+
+                  {/* Competitor prompt suggestions layout */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 w-full text-left">
+                    {starterPrompts.map((st, index) => (
+                      <motion.div
+                        key={index}
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.15 + index * 0.08 }}
+                        onClick={() => handleSendMessage(st.prompt)}
+                        className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-[#B600A8]/40 hover:bg-[#B600A8]/5 transition-all duration-300 cursor-pointer flex flex-col justify-between group active:scale-[0.98]"
+                      >
+                        <div>
+                          <div className="text-xl mb-2.5 bg-white/[0.04] w-9 h-9 rounded-xl flex items-center justify-center border border-white/5 group-hover:scale-105 transition-transform">{st.icon}</div>
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-white mb-1">{st.title}</h4>
+                          <p className="text-[11px] text-[#D7E2EA]/40 leading-relaxed font-light">{st.desc}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[10px] text-[#B600A8] font-bold uppercase tracking-widest mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span>Dispatch command</span>
+                          <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                messages.map((msg) => {
+                  const isUser = msg.role === "user";
+                  
+                  if (isUser) {
+                    return (
+                      <motion.div
+                        key={msg.id}
+                        initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                        className="flex flex-col items-end w-full select-text"
+                      >
+                        <div 
+                          className="max-w-[85%] sm:max-w-[70%] md:max-w-[60%] px-5 py-3.5 border border-white/5"
+                          style={{
+                            background: "linear-gradient(135deg, #18011F 0%, #B600A8 50%, #7621B0 100%)",
+                            borderRadius: '18px 18px 4px 18px',
+                            boxShadow: '0 4px 24px rgba(182,0,168,0.25), 0 1px 0 rgba(255,255,255,0.05) inset'
+                          }}
+                        >
+                          {msg.image && (
+                            <div className="mb-3.5 overflow-hidden rounded-xl border border-white/10 max-h-48">
+                              <img src={msg.image} className="w-full h-full object-cover" />
+                            </div>
+                          )}
+                          <p className="text-white text-sm sm:text-[14px] font-normal leading-relaxed whitespace-pre-wrap font-sans">
+                            {msg.content}
+                          </p>
+                          
+                          <span className="block text-right mt-1.5 text-[9px] text-white/40 font-mono uppercase tracking-wider select-none">
+                            {msg.timestamp}
+                          </span>
+                        </div>
+                      </motion.div>
+                    );
+                  }
+
+                  const isSpeaking = speakingId === msg.id;
+
+                  // Jack's message bubble
                   return (
                     <motion.div
                       key={msg.id}
                       initial={{ opacity: 0, y: 10, scale: 0.98 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
-                      className="flex flex-col items-end w-full"
+                      className="flex gap-3 w-full items-start select-text"
                     >
                       <div 
-                        className="max-w-[85%] sm:max-w-[70%] md:max-w-[60%] px-5 py-3.5 border border-white/5"
+                        className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 mt-0.5 select-none"
                         style={{
-                          background: "linear-gradient(135deg, #18011F 0%, #B600A8 50%, #7621B0 100%)",
-                          borderRadius: '18px 18px 4px 18px',
-                          boxShadow: '0 4px 24px rgba(182,0,168,0.25), 0 1px 0 rgba(255,255,255,0.05) inset'
+                          border: '1.5px solid rgba(182,0,168,0.4)',
+                          boxShadow: '0 0 12px rgba(182,0,168,0.2)'
                         }}
                       >
-                        <p className="text-white text-sm sm:text-[14px] font-normal leading-relaxed whitespace-pre-wrap font-sans">
-                          {msg.content}
-                        </p>
+                        <img 
+                          src="https://shrug-person-78902957.figma.site/_components/v2/d24c01ad3a56fc65e942a1f501eb73db42d7cf9a/Rectangle_40443.81459862.png" 
+                          alt="Jack Avatar" 
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+
+                      <div className="flex flex-col max-w-[90%] sm:max-w-[80%] md:max-w-[70%] relative group">
                         
-                        <span className="block text-right mt-1.5 text-[9px] text-white/40 font-mono uppercase tracking-wider">
+                        {/* Interactive Reaction & Actions Panel */}
+                        <div className="absolute right-4 -top-3.5 z-10 opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none group-hover:pointer-events-auto flex items-center gap-1 bg-[#121212]/95 border border-[#D7E2EA]/20 rounded-full py-0.5 px-1.5 shadow-lg shadow-black/80 backdrop-blur-md select-none">
+                          
+                          {/* Speak button next to message bubble */}
+                          <button
+                            onClick={(e) => handleSpeakText(msg.id, msg.content, e)}
+                            className={`w-6.5 h-6.5 flex items-center justify-center rounded-full transition-all cursor-pointer active:scale-90 ${
+                              isSpeaking ? "bg-[#B600A8]/30 border border-[#B600A8]/50 text-white" : "hover:bg-white/10 text-white/70 hover:text-white"
+                            }`}
+                            title={isSpeaking ? "Mute Reader" : "Speak Message"}
+                          >
+                            {isSpeaking ? (
+                              <VolumeX className="w-3.5 h-3.5 text-white animate-pulse" />
+                            ) : (
+                              <Volume2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
+                          <div className="w-[1px] h-3 bg-white/10 mx-1" />
+
+                          {["👍", "🚀", "❤️", "🔥", "😮"].map((emoji) => {
+                            const isReacted = (reactions[msg.id]?.[emoji] || 0) > 0;
+                            return (
+                              <button
+                                key={emoji}
+                                onClick={() => handleReact(msg.id, emoji)}
+                                className={`w-6.5 h-6.5 flex items-center justify-center text-[13px] rounded-full transition-all cursor-pointer active:scale-90 ${
+                                  isReacted ? "bg-[#B600A8]/30 border border-[#B600A8]/50 text-white" : "hover:bg-white/10 text-white/70 hover:text-white"
+                                }`}
+                              >
+                                {emoji}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Copy button next to message */}
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(msg.content);
+                            setSingleCopiedId(msg.id);
+                            setCopiedToast(true);
+                            setTimeout(() => {
+                              setSingleCopiedId(null);
+                              setCopiedToast(false);
+                            }, 2000);
+                          }}
+                          className="absolute -right-10 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-white/[0.02] border border-white/5 hover:bg-[#121212] hover:border-white/15 text-[#D7E2EA]/40 hover:text-white transition-all opacity-0 group-hover:opacity-100 cursor-pointer hidden sm:block z-20 select-none"
+                          title="Copy Message"
+                        >
+                          {singleCopiedId === msg.id ? (
+                            <Check className="w-3.5 h-3.5 text-green-400" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+
+                        <motion.div 
+                          initial={{ borderLeftColor: "#B600A8", borderLeftWidth: "3px" }}
+                          animate={{ borderLeftColor: "rgba(215,226,234,0.08)", borderLeftWidth: "1px" }}
+                          transition={{ duration: 1.2 }}
+                          className="rounded-[18px] rounded-tl-[4px] px-5 py-4 border-t border-r border-b"
+                          style={{
+                            background: 'rgba(255,255,255,0.035)',
+                            borderTopColor: 'rgba(215,226,234,0.07)',
+                            borderRightColor: 'rgba(215,226,234,0.07)',
+                            borderBottomColor: 'rgba(215,226,234,0.07)',
+                            backdropFilter: 'blur(10px)',
+                            boxShadow: '0 2px 16px rgba(0,0,0,0.2)'
+                          }}
+                        >
+                          {/* Rich Markdown parse layout replaces the generic white-space p tags */}
+                          <MarkdownRenderer content={msg.content} />
+
+                          {msg.type === "assignment" && msg.agents && (
+                            <div 
+                              className="p-4 mt-3.5 space-y-3"
+                              style={{
+                                background: 'rgba(182,0,168,0.05)',
+                                border: '1px solid rgba(182,0,168,0.15)',
+                                borderRadius: 14,
+                              }}
+                            >
+                              <div className="text-[10px] text-[#B600A8] font-bold tracking-[0.12em] uppercase font-mono select-none">
+                                ⚡ SQUAD BRIEFING TARGETS
+                              </div>
+                              
+                              <div className="flex flex-wrap gap-2 pt-1 select-none">
+                                {msg.agents.map((agent, index) => (
+                                  <div
+                                    key={index}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 6,
+                                      background: 'rgba(255,255,255,0.04)',
+                                      border: '1px solid rgba(215,226,234,0.1)',
+                                      borderRadius: 999,
+                                      padding: '5px 10px 5px 6px'
+                                    }}
+                                    className="transition-all hover:bg-white/[0.08]"
+                                  >
+                                    <span className="text-sm">{agent.emoji}</span>
+                                    <div>
+                                      <div style={{ fontSize: 11, color: 'rgba(215,226,234,0.7)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1.2 }}>
+                                        {agent.name.split(" ")[0]}
+                                      </div>
+                                      <div style={{ fontSize: 10, color: 'rgba(215,226,234,0.3)', fontWeight: 300, lineHeight: 1 }}>
+                                        {agent.role}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                        </motion.div>
+
+                        {reactions[msg.id] && Object.entries(reactions[msg.id]).some(([_, count]) => (count as number) > 0) && (
+                          <div className="flex flex-wrap gap-1.5 mt-1.5 pl-1.5 select-none">
+                            {Object.entries(reactions[msg.id]).map(([emoji, count]) => {
+                              if ((count as number) <= 0) return null;
+                              return (
+                                <button
+                                  key={emoji}
+                                  onClick={() => handleReact(msg.id, emoji)}
+                                  className="flex items-center gap-1 bg-[#B600A8]/15 hover:bg-[#B600A8]/25 border border-[#B600A8]/40 rounded-full px-2 py-0.5 text-xs text-white transition-all cursor-pointer"
+                                >
+                                  <span>{emoji}</span>
+                                  <span className="text-[10px] font-bold text-white/50">1</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        <span className="text-[10px] text-[#D7E2EA]/20 font-mono mt-1.5 uppercase tracking-wider pl-1 font-semibold block select-none">
                           {msg.timestamp}
                         </span>
                       </div>
                     </motion.div>
                   );
-                }
+                })
+              )}
 
-                // Rendering Jack's custom message type
-                return (
-                  <motion.div
-                    key={msg.id}
-                    initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
-                    className="flex gap-3 w-full items-start"
+              {isTyping && (
+                <motion.div
+                  key="typing-indicator"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="flex gap-3 w-full items-start select-none"
+                >
+                  <div 
+                    className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 mt-0.5"
+                    style={{
+                      border: '1.5px solid rgba(182,0,168,0.4)',
+                      boxShadow: '0 0 12px rgba(182,0,168,0.2)'
+                    }}
                   >
-                    {/* Jack Avatar */}
-                    <div 
-                      className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 mt-0.5"
-                      style={{
-                        border: '1.5px solid rgba(182,0,168,0.4)',
-                        boxShadow: '0 0 12px rgba(182,0,168,0.2)'
-                      }}
-                    >
-                      <img 
-                        src="https://shrug-person-78902957.figma.site/_components/v2/d24c01ad3a56fc65e942a1f501eb73db42d7cf9a/Rectangle_40443.81459862.png" 
-                        alt="Jack Avatar" 
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-
-                    <div className="flex flex-col max-w-[90%] sm:max-w-[80%] md:max-w-[70%] relative group">
-                      
-                      {/* Hover Reaction Panel */}
-                      <div className="absolute right-4 -top-3.5 z-10 opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none group-hover:pointer-events-auto flex items-center gap-1 bg-[#121212]/95 border border-[#D7E2EA]/20 rounded-full py-0.5 px-1.5 shadow-lg shadow-black/80 backdrop-blur-md">
-                        {["👍", "🚀", "❤️", "🔥", "😮"].map((emoji) => {
-                          const isReacted = (reactions[msg.id]?.[emoji] || 0) > 0;
-                          return (
-                            <button
-                              key={emoji}
-                              onClick={() => handleReact(msg.id, emoji)}
-                              className={`w-6.5 h-6.5 flex items-center justify-center text-[13px] rounded-full transition-all cursor-pointer active:scale-90 ${
-                                isReacted ? "bg-[#B600A8]/30 border border-[#B600A8]/50 text-white" : "hover:bg-white/10 text-white/70 hover:text-white"
-                              }`}
-                            >
-                              {emoji}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* Copy action next to message / right of Jack messages */}
-                      <button 
-                        onClick={() => {
-                          navigator.clipboard.writeText(msg.content);
-                          setSingleCopiedId(msg.id);
-                          setCopiedToast(true);
-                          setTimeout(() => {
-                            setSingleCopiedId(null);
-                            setCopiedToast(false);
-                          }, 2000);
-                        }}
-                        className="absolute -right-10 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-white/[0.02] border border-white/5 hover:bg-[#121212] hover:border-white/15 text-[#D7E2EA]/40 hover:text-white transition-all opacity-0 group-hover:opacity-100 cursor-pointer hidden sm:block z-20"
-                        title="Copy Message"
-                      >
-                        {singleCopiedId === msg.id ? (
-                          <Check className="w-3.5 h-3.5 text-green-400" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-
-                      {/* Message Bubble container with brief left pulse border focus */}
-                      <motion.div 
-                        initial={{ borderLeftColor: "#B600A8", borderLeftWidth: "3px" }}
-                        animate={{ borderLeftColor: "rgba(215,226,234,0.08)", borderLeftWidth: "1px" }}
-                        transition={{ duration: 1.2 }}
-                        className="rounded-[18px] rounded-tl-[4px] px-5 py-4 border-t border-r border-b"
+                    <img 
+                      src="https://shrug-person-78902957.figma.site/_components/v2/d24c01ad3a56fc65e942a1f501eb73db42d7cf9a/Rectangle_40443.81459862.png" 
+                      alt="Jack Avatar" 
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div 
+                    style={{
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(215,226,234,0.08)',
+                      borderRadius: '4px 18px 18px 18px',
+                      padding: '14px 18px',
+                      display: 'flex',
+                      gap: 5,
+                      alignItems: 'center'
+                    }}
+                    className="shadow-md"
+                  >
+                    {[0, 0.2, 0.4].map((delay, idx) => (
+                      <motion.span 
+                        key={idx}
+                        animate={{ y: [0, -6, 0], opacity: [0.4, 1, 0.4], scale: [1, 1.15, 1] }}
+                        transition={{ repeat: Infinity, duration: 1.2, delay: delay, ease: "easeInOut" }}
                         style={{
-                          background: 'rgba(255,255,255,0.04)',
-                          borderTopColor: 'rgba(215,226,234,0.08)',
-                          borderRightColor: 'rgba(215,226,234,0.08)',
-                          borderBottomColor: 'rgba(215,226,234,0.08)',
-                          backdropFilter: 'blur(10px)',
-                          boxShadow: '0 2px 16px rgba(0,0,0,0.2)'
+                          width: 7,
+                          height: 7,
+                          borderRadius: '50%',
+                          background: 'rgba(182,0,168,0.7)',
+                          display: 'inline-block'
                         }}
-                      >
-                        <p className="text-[#D7E2EA]/95 text-sm sm:text-[14px] font-light leading-relaxed whitespace-pre-wrap font-sans">
-                          {msg.content}
-                        </p>
-
-                        {/* Rendering core task assignments */}
-                        {msg.type === "assignment" && msg.agents && (
-                          <div 
-                            className="p-4 mt-3.5 space-y-3"
-                            style={{
-                              background: 'rgba(182,0,168,0.05)',
-                              border: '1px solid rgba(182,0,168,0.15)',
-                              borderRadius: 14,
-                            }}
-                          >
-                            <div className="text-[10px] text-[#B600A8] font-bold tracking-[0.12em] uppercase">
-                              ⚡ SQUAD BRIEFING TARGETS
-                            </div>
-                            
-                            <div className="flex flex-wrap gap-2 pt-1">
-                              {msg.agents.map((agent, index) => (
-                                <div
-                                  key={index}
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 6,
-                                    background: 'rgba(255,255,255,0.04)',
-                                    border: '1px solid rgba(215,226,234,0.1)',
-                                    borderRadius: 999,
-                                    padding: '5px 10px 5px 6px'
-                                  }}
-                                  className="transition-all hover:bg-white/[0.08]"
-                                >
-                                  <span className="text-sm">{agent.emoji}</span>
-                                  <div>
-                                    <div style={{ fontSize: 11, color: 'rgba(215,226,234,0.7)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1.2 }}>
-                                      {agent.name.split(" ")[0]}
-                                    </div>
-                                    <div style={{ fontSize: 10, color: 'rgba(215,226,234,0.3)', fontWeight: 300, lineHeight: 1 }}>
-                                      {agent.role}
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                      </motion.div>
-
-                      {/* Active reactions container */}
-                      {reactions[msg.id] && Object.entries(reactions[msg.id]).some(([_, count]) => (count as number) > 0) && (
-                        <div className="flex flex-wrap gap-1.5 mt-1.5 pl-1.5">
-                          {Object.entries(reactions[msg.id]).map(([emoji, count]) => {
-                            if ((count as number) <= 0) return null;
-                            return (
-                              <button
-                                key={emoji}
-                                onClick={() => handleReact(msg.id, emoji)}
-                                className="flex items-center gap-1 bg-[#B600A8]/15 hover:bg-[#B600A8]/25 border border-[#B600A8]/40 rounded-full px-2 py-0.5 text-xs text-white transition-all cursor-pointer"
-                              >
-                                <span>{emoji}</span>
-                                <span className="text-[10px] font-bold text-white/50">1</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      <span className="text-[10px] text-[#D7E2EA]/20 font-mono mt-1.5 uppercase tracking-wider pl-1 font-semibold block">
-                        {msg.timestamp}
-                      </span>
-                    </div>
-                  </motion.div>
-                );
-              })}
-
-              {/* Live Typing Thinking Indicator dots */}
-              <AnimatePresence>
-                {isTyping && (
-                  <motion.div
-                    key="typing-indicator"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className="flex gap-3 w-full items-start"
-                  >
-                    <div 
-                      className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 mt-0.5"
-                      style={{
-                        border: '1.5px solid rgba(182,0,168,0.4)',
-                        boxShadow: '0 0 12px rgba(182,0,168,0.2)'
-                      }}
-                    >
-                      <img 
-                        src="https://shrug-person-78902957.figma.site/_components/v2/d24c01ad3a56fc65e942a1f501eb73db42d7cf9a/Rectangle_40443.81459862.png" 
-                        alt="Jack Avatar" 
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover"
                       />
-                    </div>
-                    <div 
-                      style={{
-                        background: 'rgba(255,255,255,0.04)',
-                        border: '1px solid rgba(215,226,234,0.08)',
-                        borderRadius: '4px 18px 18px 18px',
-                        padding: '14px 18px',
-                        display: 'flex',
-                        gap: 5,
-                        alignItems: 'center'
-                      }}
-                      className="shadow-md"
-                    >
-                      {[0, 0.2, 0.4].map((delay, idx) => (
-                        <motion.span 
-                          key={idx}
-                          animate={{ y: [0, -6, 0], opacity: [0.4, 1, 0.4], scale: [1, 1.15, 1] }}
-                          transition={{ repeat: Infinity, duration: 1.2, delay: delay, ease: "easeInOut" }}
-                          style={{
-                            width: 7,
-                            height: 7,
-                            borderRadius: '50%',
-                            background: 'rgba(182,0,168,0.7)',
-                            display: 'inline-block'
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
 
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Float Scroll-to-bottom and Copied Toasts over chat column */}
             <AnimatePresence>
               {showScrollBottom && (
                 <motion.button
@@ -1139,7 +1584,7 @@ export function JacksWarRoom() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.9 }}
                   onClick={scrollToBottom}
-                  className="absolute bottom-28 right-6 z-40 bg-[#0C0C0C]/90 border border-white/10 hover:border-[#B600A8]/50 hover:bg-white/[0.05] text-[#D7E2EA]/70 hover:text-white p-2.5 rounded-full shadow-lg backdrop-blur-md transition-all cursor-pointer flex items-center justify-center"
+                  className="absolute bottom-32 right-6 z-40 bg-[#0C0C0C]/90 border border-white/10 hover:border-[#B600A8]/50 hover:bg-white/[0.05] text-[#D7E2EA]/70 hover:text-white p-2.5 rounded-full shadow-lg backdrop-blur-md transition-all cursor-pointer flex items-center justify-center select-none"
                 >
                   <ChevronDown className="w-5 h-5 animate-pulse" />
                 </motion.button>
@@ -1152,51 +1597,94 @@ export function JacksWarRoom() {
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 15 }}
-                  className="absolute bottom-28 left-6 z-40 bg-[#121212]/95 border border-[#B600A8]/40 shadow-xl rounded-xl px-4 py-2 flex items-center gap-2 backdrop-blur-md"
+                  className="absolute bottom-32 left-6 z-40 bg-[#121212]/95 border border-[#B600A8]/40 shadow-xl rounded-xl px-4 py-2 flex items-center gap-2 backdrop-blur-md select-none"
                 >
                   <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                  <span className="text-[10px] uppercase tracking-widest text-[#D7E2EA] font-semibold">Message Copied</span>
+                  <span className="text-[10px] uppercase tracking-widest text-[#D7E2EA] font-semibold font-mono">Message Copied</span>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* INPUT DISPATCH BAR (Upgraded glass layout) */}
+            {/* INPUT DISPATCH BAR AREA */}
             <div 
               className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#0C0C0C] via-[#0C0C0C]/95 to-[#0C0C0C]/80 border-t border-white/[0.06] backdrop-blur-3xl flex flex-col justify-center px-4 sm:px-6 md:px-10 lg:px-16 py-3.5 z-10 select-none"
-              style={{ height: 92 }}
+              style={{ minHeight: 110 }}
             >
               
+              {/* Attached Image Preview Row */}
+              <AnimatePresence>
+                {attachedImage && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="flex items-center gap-2.5 p-2 bg-white/[0.04] border border-white/10 rounded-xl mb-3 w-max select-none"
+                  >
+                    <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-white/10">
+                      <img src={attachedImage} className="w-full h-full object-cover" />
+                      <button 
+                        onClick={() => setAttachedImage(null)}
+                        className="absolute top-0.5 right-0.5 bg-black/75 hover:bg-black text-white rounded-full p-0.5 transition-all cursor-pointer"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                    <div className="pr-3">
+                      <div className="text-[10px] text-white/80 font-bold uppercase tracking-wider font-mono">WORKSPACE ATTACHMENT</div>
+                      <div className="text-[9px] text-[#D7E2EA]/40 font-mono mt-0.5">Image ready for Jack's vision module</div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <div className="w-full flex items-center gap-3">
-                {/* Attachment Clip */}
+                
+                {/* Manual Attachment file input */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+
                 <button 
-                  title="Attach Document"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Attach Graphic Asset"
                   className="p-2 text-[#D7E2EA]/40 hover:text-white hover:bg-white/5 transition-all cursor-pointer rounded-lg flex-shrink-0"
                 >
                   <Paperclip className="w-4.5 h-4.5" />
                 </button>
 
-                {/* Message Field Input with custom purple glow ring on focus */}
+                {/* Message Field Input with custom purple glow ring */}
                 <input 
                   type="text"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Ask Jack to build an e-commerce store..."
-                  className="flex-1 bg-white/[0.02] border border-white/10 rounded-[14px] px-5 py-2.5 text-sm text-[#D7E2EA] placeholder-[#D7E2EA]/30 outline-none focus:border-[#B600A8] focus:bg-white/[0.04] focus:ring-3 focus:ring-[#B600A8]/10 transition-all"
+                  placeholder={
+                    chatMode === "collecting-info" 
+                      ? "Fulfill active guided briefing parameter..." 
+                      : "Brief Commander Jack on enterprise goals..."
+                  }
+                  className="flex-1 bg-white/[0.015] border border-white/10 rounded-[14px] px-5 py-2.5 text-sm text-[#D7E2EA] placeholder-[#D7E2EA]/25 outline-none focus:border-[#B600A8] focus:bg-white/[0.03] focus:ring-3 focus:ring-[#B600A8]/10 transition-all font-sans"
                 />
 
-                {/* Audio Mic Button */}
+                {/* Microphone Speech Dictation */}
                 <button 
-                  title="Microphone Dictation"
-                  className="p-2 text-[#D7E2EA]/40 hover:text-white hover:bg-white/5 transition-all cursor-pointer rounded-lg flex-shrink-0"
+                  onClick={handleToggleSpeech}
+                  title="Microphone Voice Dictation"
+                  className={`p-2 transition-all cursor-pointer rounded-lg flex-shrink-0 ${
+                    isListening ? "text-pink-500 bg-pink-500/10 animate-pulse" : "text-[#D7E2EA]/40 hover:text-white hover:bg-white/5"
+                  }`}
                 >
                   <Mic className="w-4.5 h-4.5" />
                 </button>
 
-                {/* Submit Command with Framer Motion glow pulse on value change */}
+                {/* Submit Command */}
                 <motion.button
-                  onClick={handleSendMessage}
-                  disabled={!inputValue.trim() || isTyping}
+                  onClick={() => handleSendMessage()}
+                  disabled={(!inputValue.trim() && !attachedImage) || isTyping}
                   className="w-10 h-10 rounded-[12px] flex items-center justify-center cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed group flex-shrink-0"
                   style={{
                     background: "linear-gradient(135deg, #18011F 0%, #B600A8 50%, #7621B0 100%)"
@@ -1221,10 +1709,10 @@ export function JacksWarRoom() {
                 </motion.button>
               </div>
 
-              {/* Character Counter & Keyboard shortcut block bar */}
+              {/* Character Counter & Keyboard shortcut bar */}
               <div className="flex items-center justify-between mt-2 px-1 text-[9px] text-[#D7E2EA]/20 font-mono tracking-wider">
                 <span>⌨ CHARACTERS: {inputValue.length}</span>
-                <span className="hidden sm:inline">⚡ PRESS ENTER TO DISPATCH COMMAND // ESC TO CLEAR</span>
+                <span className="hidden sm:inline">⚡ PRESS ENTER TO DISPATCH // ESC OR STARTER BUTTON TO SWAP</span>
               </div>
 
             </div>
@@ -1239,9 +1727,8 @@ export function JacksWarRoom() {
                 initial="hidden"
                 animate="visible"
                 exit="hidden"
-                className="fixed bottom-0 left-0 right-0 h-[60vh] md:h-full z-50 md:z-auto md:relative md:bottom-auto md:left-auto md:right-auto md:w-[60%] bg-[#080808] border-t md:border-t-0 md:border-l border-[#D7E2EA]/10 md:border-[#D7E2EA]/8 rounded-t-[24px] md:rounded-t-none flex flex-col overflow-hidden shadow-2xl md:shadow-none"
+                className="fixed bottom-0 left-0 right-0 h-[60vh] md:h-full z-50 md:z-auto md:relative md:bottom-auto md:left-auto md:right-auto md:w-[60%] bg-[#080808] border-t md:border-t-0 md:border-l border-[#D7E2EA]/10 md:border-[#D7E2EA]/8 rounded-t-[24px] md:rounded-t-none flex flex-col overflow-hidden shadow-2xl md:shadow-none select-none"
               >
-                {/* Mobile pull handle */}
                 {isMobile && (
                   <div className="py-2.5 flex-shrink-0">
                     <div className="w-12 h-1 rounded-full bg-[#D7E2EA]/20 mx-auto" />
@@ -1250,20 +1737,17 @@ export function JacksWarRoom() {
 
                 {/* Preview Top Bar */}
                 <div className="h-10 bg-white/[0.02] border-b border-[#D7E2EA]/6 flex items-center justify-between px-4 flex-shrink-0">
-                  {/* Left side - 3 macOS window dots */}
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-[#FF5F57]" />
                     <div className="w-3 h-3 rounded-full bg-[#FFBD2E]" />
                     <div className="w-3 h-3 rounded-full bg-[#28C840]" />
                   </div>
 
-                  {/* Center - Fake URL address bar */}
                   <div className="bg-white/[0.04] border border-[#D7E2EA]/8 rounded-full px-4 py-1 max-w-[200px] flex items-center gap-2 select-none">
                     <Lock className="w-3 h-3 text-[#D7E2EA]/30" />
                     <span className="text-xs text-[#D7E2EA]/30 font-light truncate">nexvend.store/preview</span>
                   </div>
 
-                  {/* Right side - progress status */}
                   <div className="flex items-center gap-2 select-none">
                     <span className="text-[10px] text-[#B600A8] uppercase tracking-widest font-medium">LIVE BUILD</span>
                     <motion.span 
@@ -1274,7 +1758,7 @@ export function JacksWarRoom() {
                     {isMobile && (
                       <button 
                         onClick={() => setShowPreview(false)}
-                        className="ml-2 p-1 rounded-full hover:bg-white/10 text-[#D7E2EA]/40 hover:text-white transition-colors"
+                        className="ml-2 p-1 rounded-full hover:bg-white/10 text-[#D7E2EA]/40 hover:text-white transition-colors cursor-pointer"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -1282,7 +1766,6 @@ export function JacksWarRoom() {
                   </div>
                 </div>
 
-                {/* Video/Preview Container */}
                 <div
                   style={{
                     position: 'relative',
@@ -1292,8 +1775,6 @@ export function JacksWarRoom() {
                     background: '#080808',
                   }}
                 >
-                  
-                  {/* Video loop */}
                   <video
                     autoPlay
                     muted
@@ -1315,7 +1796,6 @@ export function JacksWarRoom() {
                     />
                   </video>
 
-                  {/* Gradient overlay */}
                   <div 
                     className="absolute inset-0 pointer-events-none"
                     style={{
@@ -1323,10 +1803,8 @@ export function JacksWarRoom() {
                     }}
                   />
 
-                  {/* Bottom info bar */}
                   {chatMode === "building" && (
                     <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between z-10">
-                      {/* Left: build step with smooth cycle transition */}
                       <div className="h-5 flex items-center">
                         <AnimatePresence mode="wait">
                           <motion.span
@@ -1342,14 +1820,12 @@ export function JacksWarRoom() {
                         </AnimatePresence>
                       </div>
 
-                      {/* Right: elapsed timer */}
                       <span className="text-xs text-[#D7E2EA]/40 font-light font-mono select-none">
                         {formatTime(elapsedTime)}
                       </span>
                     </div>
                   )}
 
-                  {/* Build progress bar */}
                   {chatMode === "building" && (
                     <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/5 z-20 overflow-hidden">
                       <motion.div 
@@ -1361,7 +1837,6 @@ export function JacksWarRoom() {
                     </div>
                   )}
 
-                  {/* "STORE READY" OVERLAY */}
                   <AnimatePresence>
                     {chatMode === "store-ready" && (
                       <motion.div
@@ -1373,7 +1848,6 @@ export function JacksWarRoom() {
                       >
                         <div className="flex flex-col items-center max-w-sm text-center gap-6">
                           
-                          {/* Success tick with spring bounce */}
                           <motion.div
                             initial={{ scale: 0.5, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
@@ -1382,7 +1856,6 @@ export function JacksWarRoom() {
                             <CheckCircle2 className="w-16 h-16 text-[#28C840]" />
                           </motion.div>
 
-                          {/* Heading */}
                           <div className="space-y-2">
                             <h2 className="hero-heading bg-gradient-to-r from-white via-[#D7E2EA] to-[#D7E2EA]/40 font-black uppercase text-2xl sm:text-3xl tracking-tight leading-none text-center">
                               Your Store is Live.
@@ -1392,7 +1865,6 @@ export function JacksWarRoom() {
                             </p>
                           </div>
 
-                          {/* Action Buttons */}
                           <div className="flex flex-wrap items-center justify-center gap-3">
                             <button
                               onClick={() => alert("Store Preview is coming soon inside your domain root!")}
@@ -1416,7 +1888,6 @@ export function JacksWarRoom() {
 
                 </div>
 
-                {/* Copied toast notification */}
                 <AnimatePresence>
                   {copiedToast && (
                     <motion.div
@@ -1438,7 +1909,7 @@ export function JacksWarRoom() {
 
       </div>
 
-      {/* SQUAD OVERLAY MODAL PANEL */}
+      {/* SQUAD OVERLAY MODAL ROSTER PANEL */}
       <AnimatePresence>
         {squadOverlayOpen && (
           <motion.div 
@@ -1455,7 +1926,6 @@ export function JacksWarRoom() {
               className="relative w-full max-w-md bg-white/[0.04] border border-[#D7E2EA]/10 rounded-[30px] p-6 shadow-2xl"
             >
               
-              {/* Modal Close Button */}
               <button 
                 onClick={() => setSquadOverlayOpen(false)}
                 className="absolute top-5 right-5 p-1 rounded-full hover:bg-white/10 text-[#D7E2EA]/40 hover:text-white transition-colors cursor-pointer"
@@ -1470,10 +1940,8 @@ export function JacksWarRoom() {
                 </h2>
               </div>
 
-              {/* Agents Bio List inside squad overlay */}
               <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1">
                 
-                {/* Jack card */}
                 <div className="flex items-center justify-between pb-3.5 border-b border-[#D7E2EA]/10">
                   <div className="flex items-center gap-3.5">
                     <img 
@@ -1496,7 +1964,6 @@ export function JacksWarRoom() {
                   </span>
                 </div>
 
-                {/* Other 5 squad agents */}
                 {squadAgents.map((agent) => (
                   <div 
                     key={agent.name} 
@@ -1530,7 +1997,6 @@ export function JacksWarRoom() {
                 ))}
               </div>
 
-              {/* Okay button CTA */}
               <button
                 onClick={() => setSquadOverlayOpen(false)}
                 className="w-full mt-6 py-3 bg-[#B600A8] hover:bg-[#B600A8]/80 text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-lg shadow-[#B600A8]/25"
