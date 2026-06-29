@@ -20,7 +20,7 @@ interface ScrambleInProps {
 
 export function ScrambleIn({ text, delay, triggered }: ScrambleInProps) {
   const [revealedCount, setRevealedCount] = useState<number>(-1);
-  const chars = "أبتثجحخدذرزسشصضطظعغفقكلمنهويابتثجحخدذرزسشصضطظعغفقكلمنهوي0123456789X#@!%";
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_#@!%&+?/[]{}*^$";
 
   useEffect(() => {
     if (!triggered) return;
@@ -66,7 +66,7 @@ interface ScrambleTextProps {
 
 export function ScrambleText({ text, isHovered, className = "" }: ScrambleTextProps) {
   const [displayText, setDisplayText] = useState(text);
-  const chars = "أبتثجحخدذرزسشصضطظعغفقكلمنهويابتثجحخدذرزسشصضطظعغفقكلمنهوي0123456789X#@!%";
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_#@!%&+?/[]{}*^$";
 
   useEffect(() => {
     if (!isHovered) {
@@ -332,7 +332,7 @@ export function GenritePage() {
 
   return (
     <div 
-      dir="rtl"
+      dir="ltr"
       className="min-h-screen bg-black text-white selection:bg-white/20 selection:text-white antialiased overflow-x-hidden relative"
       style={{ fontFamily: '"Space Mono", monospace' }}
     >
@@ -395,11 +395,11 @@ export function GenritePage() {
         <div className="relative z-10 w-full px-4 sm:px-6 md:px-8 pt-20 sm:pt-24 pb-8 sm:pb-12 max-w-7xl mx-auto flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           
           {/* Left Column */}
-          <div className="flex flex-col gap-4 text-right">
+          <div className="flex flex-col gap-4 text-left">
             <h1 className="text-white font-light leading-[0.95] tracking-[-0.03em] text-[clamp(40px,10vw,100px)] uppercase">
-              <ScrambleIn text="الذكاء" delay={200} triggered={entranceComplete} />
+              <ScrambleIn text="VISUAL" delay={200} triggered={entranceComplete} />
               <br />
-              <ScrambleIn text="البصري" delay={500} triggered={entranceComplete} />
+              <ScrambleIn text="INTELLIGENCE" delay={500} triggered={entranceComplete} />
             </h1>
             
             <motion.p
@@ -412,16 +412,16 @@ export function GenritePage() {
               }}
               className="max-w-md text-[13px] sm:text-[15px] text-white/60 leading-relaxed font-mono"
             >
-              استوديو متكامل يعمل بالذكاء الاصطناعي التوليدي الفائق لتوليد وتصميم الفيديوهات والابتكارات البصرية فائقة الواقعية وتحليل المنتجات بذكاء استباقي لتسريع مبيعاتك وعلامتك التجارية.
+              A premium, full-stack generative AI engine designed to produce ultra-realistic cinematic sequences, high-fidelity promotional branding, and intelligent product analysis.
             </motion.p>
           </div>
 
           {/* Right Column */}
-          <div className="flex flex-col gap-4 text-right">
+          <div className="flex flex-col gap-4 text-left md:text-right">
             <h1 className="text-white font-light leading-[0.95] tracking-[-0.03em] text-[clamp(40px,10vw,100px)] uppercase">
-              <ScrambleIn text="إبداع" delay={700} triggered={entranceComplete} />
+              <ScrambleIn text="ABSOLUTE" delay={700} triggered={entranceComplete} />
               <br />
-              <ScrambleIn text="مطلق" delay={1000} triggered={entranceComplete} />
+              <ScrambleIn text="CREATIVITY" delay={1000} triggered={entranceComplete} />
             </h1>
           </div>
 
@@ -462,7 +462,7 @@ export function GenritePage() {
             }}
             className="font-sans font-normal text-[22px] sm:text-[30px] md:text-[36px] lg:text-[42px] text-white leading-[1.35] tracking-[-0.02em] select-none px-6 sm:px-12 text-center"
           >
-            منصة Genrite الثورية تدمج الذكاء الاصطناعي التوليدي الفائق مع الفن البصري الرقمي. نقوم بتحويل الكلمات والأفكار البسيطة إلى لقطات وفيديوهات سينمائية وصور واقعية مذهلة بلمسة واحدة. نحن نعيد صياغة مستقبل الإنتاج المرئي والتسويق الرقمي بذكاء لا يعرف الحدود.
+            Genrite fuses cutting-edge generative neural nets with luxury digital art. We decode complex product aesthetics and simple textual prompts into cinematic video clips and ultra-high-definition visual assets. We are building the future of autonomous, high-speed digital commercial production.
           </motion.p>
         </div>
       </section>
@@ -487,7 +487,7 @@ export function GenritePage() {
             transition={{ duration: 1.2 }}
             className="text-white/40 text-[13px] sm:text-[14px] tracking-[0.2em] uppercase mb-20 text-center font-mono"
           >
-            إحصائيات الأداء الكفاءة
+            PERFORMANCE & EFFICIENCY METRICS
           </motion.p>
 
           {/* Metrics Grid */}
@@ -501,10 +501,10 @@ export function GenritePage() {
               className="flex flex-col items-center text-center"
             >
               <span className="text-white text-[clamp(48px,10vw,96px)] font-light tracking-[-0.04em] leading-none font-mono">
-                3.2ث
+                3.2s
               </span>
               <span className="text-white/40 text-[13px] sm:text-[15px] mt-4 tracking-wide font-mono">
-                سرعة توليد المشاهد
+                Scene Generation Speed
               </span>
             </motion.div>
 
@@ -520,7 +520,7 @@ export function GenritePage() {
                 99.2%
               </span>
               <span className="text-white/40 text-[13px] sm:text-[15px] mt-4 tracking-wide font-mono">
-                دقة مطابقة التوجيهات
+                Prompt Coherence Rate
               </span>
             </motion.div>
 
@@ -533,10 +533,10 @@ export function GenritePage() {
               className="flex flex-col items-center text-center"
             >
               <span className="text-white text-[clamp(48px,10vw,96px)] font-light tracking-[-0.04em] leading-none font-mono">
-                4K
+                4K UHD
               </span>
               <span className="text-white/40 text-[13px] sm:text-[15px] mt-4 tracking-wide font-mono">
-                أقصى دقة للصور والفيديو
+                Maximum Native Resolution
               </span>
             </motion.div>
           </div>
@@ -555,7 +555,7 @@ export function GenritePage() {
         />
 
         {/* Top area */}
-        <div className="relative z-10 flex flex-col md:flex-row md:justify-between md:items-start gap-6 pt-16 text-right">
+        <div className="relative z-10 flex flex-col md:flex-row md:justify-between md:items-start gap-6 pt-16 text-left">
           <motion.h2
             initial={{ y: 40, opacity: 0 }}
             whileInView={{ y: 0, opacity: 1 }}
@@ -563,7 +563,7 @@ export function GenritePage() {
             transition={{ duration: 1.0 }}
             className="text-white font-light text-[clamp(36px,8vw,72px)] leading-[0.95] tracking-[-0.03em] uppercase font-mono"
           >
-            استوديو <br /> الإنتاج الإبداعي
+            CREATIVE <br /> PRODUCTION STUDIO
           </motion.h2>
 
           <motion.p
@@ -571,9 +571,9 @@ export function GenritePage() {
             whileInView={{ y: 0, opacity: 1 }}
             viewport={{ once: true, amount: 0.3 }}
             transition={{ duration: 1.0, delay: 0.2 }}
-            className="text-white/50 text-[13px] sm:text-[15px] leading-relaxed max-w-xs text-right md:pt-2 font-mono"
+            className="text-white/50 text-[13px] sm:text-[15px] leading-relaxed max-w-xs text-left md:pt-2 font-mono"
           >
-            يقوم نظام Genrite المتقدم بتحليل المدخلات النصية والجمالية لتقديم محتوى إبداعي متفوق ملائم لهوية منتجك بدقة متناهية وسرعة فائقة.
+            Genrite\'s adaptive visual engine scans design coordinates, textural dimensions, and brand attributes to synthesize publication-grade advertising creative instantly.
           </motion.p>
         </div>
 
@@ -581,23 +581,23 @@ export function GenritePage() {
         <div className="flex-1" />
 
         {/* Bottom Grid */}
-        <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-6 w-full text-right">
+        <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-6 w-full text-left">
           {[
             {
-              title: "توليد فيديو سينمائي",
-              desc: "صناعة لقطات وفيديوهات سينمائية بدقة 4K من توجيهات نصية بسيطة بسلاسة منقطعة النظير."
+              title: "Cinematic Video",
+              desc: "Deploy beautiful, physically coherent 4K reels from minimalist prompts with incredible camera flight paths."
             },
             {
-              title: "تصميم صور فائق الواقعية",
-              desc: "محاكاة الإضاءة والظلال الطبيعية لإنتاج صور فوتوغرافية وإبداعية مذهلة تجذب الأنظار."
+              title: "Hyper-Real Photos",
+              desc: "Simulate intricate studio lighting, natural shadows, and organic textures that capture and hold attention."
             },
             {
-              title: "التحليل البصري للمنتجات",
-              desc: "تحليل ذكي لخصائص المنتجات لتوليد زوايا تصوير وتصاميم تسويقية مثالية لزيادة المبيعات."
+              title: "Telemetry Scanning",
+              desc: "Analyze and decode physical features of your products to construct optimized catalog layouts and marketing compositions."
             },
             {
-              title: "معالجة فورية فائقة",
-              desc: "تحسين فوري للإضاءة وتفاصيل الملمس لتبدو المواد واقعية وطبيعية تماماً ومطابقة لطلبك."
+              title: "UHD Rendering",
+              desc: "Instantly upgrade lighting quality, micro-bevels, and texture resolution for flawless production quality."
             }
           ].map((item, idx) => (
             <motion.div
@@ -634,13 +634,13 @@ export function GenritePage() {
             className="flex flex-col items-center"
           >
             <p className="text-white/40 text-[13px] sm:text-[14px] tracking-[0.2em] uppercase mb-8 font-mono">
-              منهجية العمل
+              CREATIVE PIPELINE
             </p>
             <h3 className="text-white font-light text-[clamp(28px,6vw,56px)] leading-[1.15] tracking-[-0.02em] mb-10 font-mono uppercase">
-              ثلاث خطوات. ابتكار بلا حدود.
+              Three Steps. Endless Creation.
             </h3>
             <p className="text-white/45 text-[15px] sm:text-[17px] leading-relaxed max-w-xl mx-auto font-mono">
-              تبدأ العملية بصياغة فكرتك، ثم يقوم الذكاء التوليدي بمعالجة التفاصيل والجماليات، لينتج لك عملاً فنياً نهائياً فائق الجودة وجاهزاً للنشر المباشر.
+              Your custom aesthetic parameters are fed directly into the model, processed through layered diffusion neural nets, and outputted as optimized cinematic commercial assets.
             </p>
           </motion.div>
 
@@ -653,9 +653,9 @@ export function GenritePage() {
             className="mt-20 flex flex-col items-center gap-4 w-full"
           >
             {[
-              { layer: "الخطوة 1", name: "صياغة وتلقي الفكرة" },
-              { layer: "الخطوة 2", name: "المعالجة الفنية بالذكاء" },
-              { layer: "الخطوة 3", name: "تصدير المحتوى فائق الدقة" }
+              { layer: "PHASE 01", name: "Ideation & Prompt Input" },
+              { layer: "PHASE 02", name: "Generative Rendering" },
+              { layer: "PHASE 03", name: "Ultra-HD Master Export" }
             ].map((card, idx) => (
               <div
                 key={idx}
@@ -687,21 +687,21 @@ export function GenritePage() {
         </div>
 
         {/* Right Half: Content */}
-        <div className="w-full md:w-1/2 flex flex-col justify-between p-10 sm:p-16 bg-black z-10 text-right">
+        <div className="w-full md:w-1/2 flex flex-col justify-between p-10 sm:p-16 bg-black z-10 text-left">
           <div>
             {/* Top logo & text */}
-            <div className="flex items-center gap-2 mb-8 select-none justify-start" style={{ direction: "ltr" }}>
+            <div className="flex items-center gap-2 mb-8 select-none justify-start">
               <SynapseXLogo className="w-[18px] h-[18px] text-white/70" />
               <span className="text-[15px] font-medium text-white/70 tracking-tight font-mono">Genrite AI</span>
             </div>
             <p className="text-white/40 text-[14px] sm:text-[15px] leading-relaxed max-w-sm font-mono">
-              الجيل القادم من الإنتاج المرئي الفائق وصناعة المحتوى الإبداعي بالذكاء الاصطناعي التوليدي. صُمم للشركات والمبدعين الباحثين عن التفوق والريادة البصرية.
+              Next-generation visual production and creative asset synthesis powered by elite diffusion technology. Engineered for forward-thinking enterprises demanding unparalleled visual dominance.
             </p>
           </div>
 
           <div>
             <p className="text-white/25 text-[12px] mt-12 font-mono">
-              &copy; 2026 استوديو Genrite AI. جميع الحقوق محفوظة.
+              &copy; 2026 Genrite AI Studio. All rights reserved.
             </p>
           </div>
         </div>

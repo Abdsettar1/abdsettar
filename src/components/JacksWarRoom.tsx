@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, KeyboardEvent } from "react";
+import { useState, useEffect, useRef, KeyboardEvent, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -12,6 +12,7 @@ import {
   Sliders
 } from "lucide-react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { AssistantRuntimeProvider, useExternalStoreRuntime, type ThreadMessage, ThreadPrimitive } from "@assistant-ui/react";
 
 interface Agent {
   name: string;
@@ -152,6 +153,7 @@ export function JacksWarRoom() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [engineView, setEngineView] = useState<"classic" | "telemetry">("classic");
 
   // Core chat states
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -187,6 +189,35 @@ export function JacksWarRoom() {
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [singleCopiedId, setSingleCopiedId] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  // Map internal messages to Assistant-UI ThreadMessage schema for the runtime
+  const mappedMessages = useMemo<ThreadMessage[]>(() => {
+    return messages.map(msg => ({
+      id: msg.id,
+      createdAt: new Date(),
+      role: msg.role === "jack" ? "assistant" as const : "user" as const,
+      content: [
+        { type: "text" as const, text: msg.content }
+      ],
+      status: msg.role === "jack" ? { type: "complete" as const, reason: "stop" as const } : undefined,
+      metadata: {
+        custom: {
+          original: msg
+        }
+      },
+      attachments: []
+    })) as any as ThreadMessage[];
+  }, [messages]);
+
+  const assistantRuntime = useExternalStoreRuntime({
+    messages: mappedMessages,
+    isRunning: isTyping,
+    onNew: async (msg) => {
+      const textPart = msg.content.find(p => p.type === "text");
+      const text = textPart && textPart.type === "text" ? textPart.text : "";
+      handleSendMessage(text);
+    }
+  });
 
   // Custom Background Config state (dynamic adjustments)
   const [bgSize, setBgSize] = useState<string>("cover"); // "cover" | "contain" | "auto" | "150% 150%" | "200% 200%"
@@ -1371,25 +1402,50 @@ export function JacksWarRoom() {
           
           {/* Left Strategic Dialogue Module (Floating styled) */}
           <div className="flex-1 flex flex-col h-full bg-transparent relative">
+            <AssistantRuntimeProvider runtime={assistantRuntime}>
             
             {/* Session Explorer Subheader (Modern Light glass) */}
-            <div className="h-11 bg-white/75 border-b border-black/5 flex items-center justify-between px-4 sm:px-6 select-none flex-shrink-0 z-10">
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] font-bold text-[#333333]/50 tracking-wider font-mono">ACTIVE DEPLOYMENT STREAM:</span>
-                <span className="text-[10px] text-black font-bold uppercase font-mono max-w-[150px] truncate">
+            <div className="h-11 bg-white/75 border-b border-black/5 flex items-center justify-between px-4 sm:px-6 select-none flex-shrink-0 z-10 gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-[9px] font-bold text-[#333333]/50 tracking-wider font-mono hidden xs:inline">ACTIVE STREAM:</span>
+                <span className="text-[10px] text-black font-bold uppercase font-mono max-w-[120px] sm:max-w-[150px] truncate">
                   {sessionsList.find(s => s.id === activeSessionId)?.title || "WORKSPACE BRIEFING"}
                 </span>
               </div>
+
+              {/* Engine View Toggle */}
+              <div className="flex items-center bg-black/5 rounded-lg p-0.5 border border-black/5 select-none scale-90 sm:scale-100">
+                <button
+                  onClick={() => setEngineView("classic")}
+                  className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                    engineView === "classic"
+                      ? "bg-white text-[#B600A8] shadow-sm"
+                      : "text-black/50 hover:text-black"
+                  }`}
+                >
+                  Commander HUD
+                </button>
+                <button
+                  onClick={() => setEngineView("telemetry")}
+                  className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                    engineView === "telemetry"
+                      ? "bg-white text-[#B600A8] shadow-sm"
+                      : "text-black/50 hover:text-black"
+                  }`}
+                >
+                  Assistant-UI Telemetry
+                </button>
+              </div>
               
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-shrink-0">
                 {/* Search / filter icon */}
-                <div className="relative flex items-center">
+                <div className="relative flex items-center hidden md:flex">
                   <input 
                     type="text"
                     placeholder="Filter pipeline..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-28 sm:w-36 bg-black/5 border border-black/5 rounded-lg text-[9px] pl-6 pr-2 py-1 outline-none text-[#000000] placeholder-[#333333]/30 transition-all focus:w-44 focus:bg-white focus:border-[#B600A8]/30 font-sans"
+                    className="w-24 sm:w-36 bg-black/5 border border-black/5 rounded-lg text-[9px] pl-6 pr-2 py-1 outline-none text-[#000000] placeholder-[#333333]/30 transition-all focus:w-44 focus:bg-white focus:border-[#B600A8]/30 font-sans"
                   />
                   <Search className="w-2.5 h-2.5 text-[#333333]/30 absolute left-2" />
                 </div>
@@ -1466,12 +1522,13 @@ export function JacksWarRoom() {
               )}
             </AnimatePresence>
 
-            {/* CHAT MESSAGES PANEL */}
-            <div 
-              ref={chatContainerRef}
-              onScroll={handleScroll}
-              className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 relative scrollbar-thin scroll-smooth"
-            >
+            {/* CHAT MESSAGES PANEL powered by Assistant UI */}
+            <ThreadPrimitive.Root className="flex-1 overflow-hidden relative flex flex-col">
+              <ThreadPrimitive.Viewport 
+                ref={chatContainerRef}
+                onScroll={handleScroll}
+                className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 relative scrollbar-thin scroll-smooth"
+              >
               {/* THE "BRAIN" ANIMATION - Subtle abstract rotating pulsing shape in background of chat */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
                 <motion.svg 
@@ -1575,147 +1632,214 @@ export function JacksWarRoom() {
                 </motion.div>
               )}
 
-              {/* MESSAGE BUBBLES GRID */}
+              {/* MESSAGE BUBBLES GRID powered by ThreadPrimitive.Messages */}
               <div className="space-y-4 max-w-3xl mx-auto relative z-10">
-                {messages.map((msg) => {
-                  const isUser = msg.role === "user";
-                  return (
-                    <motion.div
-                      key={msg.id}
-                      initial={{ opacity: 0, y: 15, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      transition={{ type: "spring", stiffness: 220, damping: 20 }}
-                      className={`flex gap-3.5 text-left ${isUser ? "justify-end" : "justify-start"}`}
-                    >
-                      {/* Avatar */}
-                      {!isUser && (
-                        <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border border-black/5 shadow-sm bg-white">
-                          <img 
-                            src="https://shrug-person-78902957.figma.site/_components/v2/d24c01ad3a56fc65e942a1f501eb73db42d7cf9a/Rectangle_40443.81459862.png" 
-                            alt="Jack"
-                            referrerPolicy="no-referrer"
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      )}
+                {/* Live Assistant-UI Runtime Status Bar */}
+                <div className="bg-[#B600A8]/5 border border-[#B600A8]/20 backdrop-blur-md rounded-2xl p-4 mb-4 flex flex-col xs:flex-row items-start xs:items-center justify-between gap-3 select-none">
+                  <div className="flex items-center gap-3">
+                    <div className="relative flex h-3.5 w-3.5 flex-shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#B600A8] opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-[#B600A8]"></span>
+                    </div>
+                    <div>
+                      <h4 className="text-[10px] font-black uppercase tracking-wider text-[#B600A8] font-mono leading-none">ASSISTANT-UI CORE RUNTIME ACTIVE</h4>
+                      <p className="text-[9px] text-[#333333]/50 font-mono mt-1">Store synchronized: {mappedMessages.length} nodes registered</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 font-mono text-[8px] text-[#333333]/60 bg-white border border-black/5 rounded-xl px-2.5 py-1.5 shadow-sm">
+                    <div className="flex items-center gap-1">
+                      <span className="w-1 h-1 rounded-full bg-green-500 animate-pulse" />
+                      <span>ON_NEW DISPATCH: OK</span>
+                    </div>
+                    <span className="text-black/15">|</span>
+                    <span className="text-black/50">ADAPTER: useExternalStoreRuntime</span>
+                  </div>
+                </div>
 
-                      <div className="max-w-[85%] space-y-1.5">
-                        
-                        {/* Header metadata label */}
-                        <div className="flex items-center gap-2 text-[9px] text-[#333333]/40 font-mono tracking-wider">
-                          <span className="font-bold text-black/70">{isUser ? "COMMANDER (YOU)" : "JACK // AGENT UPLINK"}</span>
-                          <span>•</span>
-                          <span>{msg.timestamp}</span>
-                        </div>
+                <ThreadPrimitive.Messages>
+                  {({ message }) => {
+                    const isUser = message.role === "user";
+                    // Retrieve the original parsed message object
+                    const msg = (message.metadata?.custom?.original as ChatMessage) || {
+                      id: message.id,
+                      role: isUser ? "user" : "jack",
+                      type: "text",
+                      content: message.content[0]?.type === "text" ? message.content[0].text : "",
+                      timestamp: new Date().toLocaleTimeString()
+                    };
 
-                        {/* Content bubble */}
-                        <div 
-                          className={`
-                            p-4 rounded-[20px] text-xs leading-relaxed transition-all shadow-sm
-                            ${isUser 
-                              ? "bg-[#F3E8FF] border border-[#E9D5FF] text-black rounded-tr-sm" 
-                              : "bg-white border border-black/5 text-black rounded-tl-sm"
-                            }
-                          `}
+                    if (engineView === "telemetry") {
+                      return (
+                        <motion.div
+                          key={message.id}
+                          initial={{ opacity: 0, x: -15 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          className="bg-white border border-black/5 rounded-2xl p-4 font-mono text-[10px] space-y-3 text-left shadow-sm hover:shadow-md transition-all border-l-4 border-l-[#B600A8]"
                         >
-                          {msg.image && (
-                            <div className="mb-3.5 rounded-xl overflow-hidden border border-black/5 shadow-sm max-w-[240px]">
-                              <img src={msg.image} alt="Visual Attachment" className="w-full h-auto object-cover" />
-                            </div>
-                          )}
-
-                          {/* Render Rich Markdown with light theme compatibility */}
-                          <div className="prose prose-sm prose-neutral max-w-none text-black">
-                            <MarkdownRenderer content={msg.content} />
+                          <div className="flex items-center justify-between border-b border-black/5 pb-2 text-black/40 text-[8px]">
+                            <span className="font-bold text-black/70 flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#B600A8]" />
+                              MESSAGE_NODE: {message.id}
+                            </span>
+                            <span className="uppercase tracking-widest font-black text-[#B600A8] bg-[#B600A8]/5 border border-[#B600A8]/10 px-1.5 py-0.5 rounded">
+                              ROLE: {message.role}
+                            </span>
                           </div>
-
-                          {/* SQUAD DEPLOYED AGENTS INFO (Typewriter / Assignment) */}
-                          {msg.type === "assignment" && msg.agents && msg.agents.length > 0 && (
-                            <div className="mt-4 pt-3.5 border-t border-black/5 space-y-2 select-none">
-                              <span className="text-[8px] font-black tracking-widest text-[#B600A8] uppercase font-mono block">
-                                Assigned SQUAD CODES
-                              </span>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                                {msg.agents.map((agent, i) => (
-                                  <div 
-                                    key={i} 
-                                    className="flex items-center gap-2 p-2 bg-black/[0.02] border border-black/5 rounded-xl text-left"
-                                  >
-                                    <span className="text-sm">{agent.emoji}</span>
-                                    <div>
-                                      <div className="text-[10px] font-bold text-black uppercase leading-none">{agent.name}</div>
-                                      <div className="text-[8px] text-[#333333]/50 font-light mt-0.5">{agent.role}</div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Speech controls and Reactions */}
-                        <div className="flex items-center gap-3 px-1 select-none">
                           
-                          {/* Audio Speech Button */}
-                          {!isUser && (
-                            <button
-                              onClick={(e) => handleSpeakText(msg.id, msg.content, e)}
-                              className={`
-                                flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] font-bold transition-all border
-                                ${speakingId === msg.id 
-                                  ? "bg-[#B600A8]/10 text-[#B600A8] border-[#B600A8]/20 animate-pulse" 
-                                  : "bg-white border-black/5 text-[#333333]/60 hover:text-black hover:border-black/10"
-                                }
-                              `}
-                            >
-                              {speakingId === msg.id ? (
-                                <>
-                                  <VolumeX className="w-3 h-3 text-[#B600A8]" />
-                                  <span>MUTE AUDIO</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Volume2 className="w-3 h-3" />
-                                  <span>READ OUT LOUD</span>
-                                </>
-                              )}
-                            </button>
-                          )}
+                          <div className="space-y-1">
+                            <div className="text-[#333333]/50 text-[8px] uppercase font-bold tracking-wider">RAW_BUFFER_OUTPUT:</div>
+                            <div className="bg-black/[0.02] border border-black/5 p-3 rounded-xl text-black select-text whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
+                              {message.content[0]?.type === "text" ? message.content[0].text : JSON.stringify(message.content)}
+                            </div>
+                          </div>
 
-                          {/* Quick Reactions */}
-                          <div className="flex items-center gap-1">
-                            {["👍", "🔥", "🚀", "💡"].map((emoji) => {
-                              const count = (reactions[msg.id] && reactions[msg.id][emoji]) || 0;
-                              return (
-                                <button
-                                  key={emoji}
-                                  onClick={() => handleReact(msg.id, emoji)}
-                                  className={`
-                                    px-1.5 py-0.5 rounded text-[10px] transition-all
-                                    ${count > 0 
-                                      ? "bg-[#B600A8]/10 text-[#B600A8] border border-[#B600A8]/20 font-bold scale-105" 
-                                      : "hover:bg-black/5 text-[#333333]/50 border border-transparent"
-                                    }
-                                  `}
-                                >
-                                  {emoji} {count > 0 ? "1" : ""}
-                                </button>
-                              );
-                            })}
+                          <div className="flex items-center justify-between text-[8px] text-black/40 pt-1">
+                            <div className="flex items-center gap-2">
+                              <span>STATUS: <span className="text-green-600 font-bold">COMPLETED</span></span>
+                              <span>•</span>
+                              <span>METADATA_CACHED: <span className="text-blue-600 font-bold">TRUE</span></span>
+                            </div>
+                            <span>TS: {msg.timestamp || "NOW"}</span>
+                          </div>
+                        </motion.div>
+                      );
+                    }
+
+                    return (
+                      <motion.div
+                        key={message.id}
+                        initial={{ opacity: 0, y: 15, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ type: "spring", stiffness: 220, damping: 20 }}
+                        className={`flex gap-3.5 text-left ${isUser ? "justify-end" : "justify-start"}`}
+                      >
+                        {/* Avatar */}
+                        {!isUser && (
+                          <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border border-black/5 shadow-sm bg-white">
+                            <img 
+                              src="https://shrug-person-78902957.figma.site/_components/v2/d24c01ad3a56fc65e942a1f501eb73db42d7cf9a/Rectangle_40443.81459862.png" 
+                              alt="Jack"
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+
+                        <div className="max-w-[85%] space-y-1.5">
+                          {/* Header metadata label */}
+                          <div className="flex items-center gap-2 text-[9px] text-[#333333]/40 font-mono tracking-wider">
+                            <span className="font-bold text-black/70">{isUser ? "COMMANDER (YOU)" : "JACK // AGENT UPLINK"}</span>
+                            <span>•</span>
+                            <span>{msg.timestamp}</span>
+                          </div>
+
+                          {/* Content bubble */}
+                          <div 
+                            className={`
+                              p-4 rounded-[20px] text-xs leading-relaxed transition-all shadow-sm
+                              ${isUser 
+                                ? "bg-[#F3E8FF] border border-[#E9D5FF] text-black rounded-tr-sm" 
+                                : "bg-white border border-black/5 text-black rounded-tl-sm"
+                              }
+                            `}
+                          >
+                            {msg.image && (
+                              <div className="mb-3.5 rounded-xl overflow-hidden border border-black/5 shadow-sm max-w-[240px]">
+                                <img src={msg.image} alt="Visual Attachment" className="w-full h-auto object-cover" />
+                              </div>
+                            )}
+
+                            {/* Render Rich Markdown with light theme compatibility */}
+                            <div className="prose prose-sm prose-neutral max-w-none text-black">
+                              <MarkdownRenderer content={msg.content} />
+                            </div>
+
+                            {/* SQUAD DEPLOYED AGENTS INFO (Typewriter / Assignment) */}
+                            {msg.type === "assignment" && msg.agents && msg.agents.length > 0 && (
+                              <div className="mt-4 pt-3.5 border-t border-black/5 space-y-2 select-none">
+                                <span className="text-[8px] font-black tracking-widest text-[#B600A8] uppercase font-mono block">
+                                  Assigned SQUAD CODES
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                  {msg.agents.map((agent, i) => (
+                                    <div 
+                                      key={i} 
+                                      className="flex items-center gap-2 p-2 bg-black/[0.02] border border-black/5 rounded-xl text-left"
+                                    >
+                                      <span className="text-sm">{agent.emoji}</span>
+                                      <div>
+                                        <div className="text-[10px] font-bold text-black uppercase leading-none">{agent.name}</div>
+                                        <div className="text-[8px] text-[#333333]/50 font-light mt-0.5">{agent.role}</div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Speech controls and Reactions */}
+                          <div className="flex items-center gap-3 px-1 select-none">
+                            {/* Audio Speech Button */}
+                            {!isUser && (
+                              <button
+                                onClick={(e) => handleSpeakText(message.id, msg.content, e)}
+                                className={`
+                                  flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] font-bold transition-all border
+                                  ${speakingId === message.id 
+                                    ? "bg-[#B600A8]/10 text-[#B600A8] border-[#B600A8]/20 animate-pulse" 
+                                    : "bg-white border-black/5 text-[#333333]/60 hover:text-black hover:border-black/10"
+                                  }
+                                `}
+                              >
+                                {speakingId === message.id ? (
+                                  <>
+                                    <VolumeX className="w-3 h-3 text-[#B600A8]" />
+                                    <span>MUTE AUDIO</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Volume2 className="w-3 h-3" />
+                                    <span>READ OUT LOUD</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+
+                            {/* Quick Reactions */}
+                            <div className="flex items-center gap-1">
+                              {["👍", "🔥", "🚀", "💡"].map((emoji) => {
+                                const count = (reactions[message.id] && reactions[message.id][emoji]) || 0;
+                                return (
+                                  <button
+                                    key={emoji}
+                                    onClick={() => handleReact(message.id, emoji)}
+                                    className={`
+                                      px-1.5 py-0.5 rounded text-[10px] transition-all
+                                      ${count > 0 
+                                        ? "bg-[#B600A8]/10 text-[#B600A8] border border-[#B600A8]/20 font-bold scale-105" 
+                                        : "hover:bg-black/5 text-[#333333]/50 border border-transparent"
+                                      }
+                                    `}
+                                  >
+                                    {emoji} {count > 0 ? "1" : ""}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
                         </div>
 
-                      </div>
-
-                      {/* User Avatar */}
-                      {isUser && (
-                        <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border border-[#E9D5FF] bg-gradient-to-tr from-[#7621B0]/20 to-[#B600A8]/20 flex items-center justify-center font-black text-xs text-[#B600A8] select-none shadow-sm">
-                          CO
-                        </div>
-                      )}
-                    </motion.div>
-                  );
-                })}
+                        {/* User Avatar */}
+                        {isUser && (
+                          <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border border-[#E9D5FF] bg-gradient-to-tr from-[#7621B0]/20 to-[#B600A8]/20 flex items-center justify-center font-black text-xs text-[#B600A8] select-none shadow-sm">
+                            CO
+                          </div>
+                        )}
+                      </motion.div>
+                    );
+                  }}
+                </ThreadPrimitive.Messages>
 
                 {/* AI Typewriter simulated loading */}
                 {isTyping && (
@@ -1740,7 +1864,8 @@ export function JacksWarRoom() {
                   </div>
                 )}
               </div>
-            </div>
+            </ThreadPrimitive.Viewport>
+          </ThreadPrimitive.Root>
 
             {/* FLOATING COMMAND INPUT BAR PANEL */}
             <div className="p-4 bg-transparent relative z-20 max-w-3xl mx-auto w-full select-none">
@@ -2023,7 +2148,8 @@ export function JacksWarRoom() {
                 <span className="hidden sm:inline">⚡ ENTER TO DISPATCH // DIRECTIVE PIPELINE v3.15</span>
               </div>
             </div>
-          </div>  {/* END OF LEFT STRATEGIC PANEL */}
+          </AssistantRuntimeProvider>
+        </div>  {/* END OF LEFT STRATEGIC PANEL */}
 
           {/* 4. RIGHT TACTICAL PREVIEW PANEL (60% width - Active Store Rendering & Mission Timeline) */}
           <AnimatePresence>
